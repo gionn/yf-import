@@ -1,27 +1,52 @@
-# Yahoo Finance Quote API
+# Yahoo Finance Import API
 
-A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance. Returns the current market price for any stock symbol in plain text format.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Perfect to be used with the Google Sheet `IMPORTDATA` function, e.g.:
+A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance and
+returns them in plain text format - perfect for importing into spreadsheets.
+
+**Built for Google Sheets**: Use the `IMPORTDATA` function to easily pull stock
+prices, especially useful for European securities that Google Finance doesn't
+handle well.
 
 ```text
 =IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/VUAA.MI")
+=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/VWCE.DE")
+=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/AAPL")
 ```
 
 ## Features
 
 - ⚡ Fast edge-deployed API using Cloudflare Workers
+- � Plain text response - ideal for `IMPORTDATA()` in Google Sheets
 - 📈 Real-time stock prices from Yahoo Finance
 - 🌐 Global availability with low latency
 - 💰 Free tier: 100,000 requests/day
 - 🔒 No API key required
-- 🗄️ Configurable edge caching (default: 4 hours)
+- 🗄️ Smart edge caching (default: 4 hours)
+- 🌍 Works with international stock symbols (US, European, Asian markets)
+
+## Quick Start
+
+### Using the Public Instance
+
+You can use my public instance directly in your Google Sheets:
+
+```
+=IMPORTDATA("https://yf-import.gionn.net/api/quotes/YOUR_SYMBOL")
+```
+
+Replace `YOUR_SYMBOL` with any valid Yahoo Finance symbol (e.g., AAPL, VUAA.MI,
+VWCE.DE).
 
 ## Deployment to Cloudflare Workers
 
+You can deploy your own fork of this project on GitHub to your Cloudflare
+account for better control.
+
 ### Prerequisites
 
-- GitHub account
+- GitHub account (free account)
 - Cloudflare account (free tier available)
 
 ### Cloudflare Workers Free Tier Limits
@@ -58,7 +83,7 @@ Perfect for personal projects and medium-traffic applications.
    - Add `CACHE_TTL` with your desired value (e.g., `300` for 5 minutes)
    - Click **Save**
 
-Your worker will be available at: `https://yf-import.<account-id>.pages.dev`
+Your worker will be available at: `https://yf-import.<account-id>.workers.dev`
 
 Every push to your GitHub repository will automatically trigger a new deployment.
 
@@ -73,7 +98,7 @@ npm install
 # Login to Cloudflare
 npx wrangler login
 
-# Deploy
+# Deploy to your Cloudflare account
 npm run deploy
 ```
 
@@ -127,15 +152,12 @@ Configure cache duration in [wrangler.toml](wrangler.toml):
 CACHE_TTL = "300"  # Cache for 5 minutes (300 seconds)
 ```
 
-Responses are cached at Cloudflare's edge using `Cache-Control` headers. This means:
+Responses are cached at Cloudflare's edge using `Cache-Control` headers. This
+means:
+
 - Same quote requests within the TTL window are served instantly from cache
 - No API calls to Yahoo Finance during cache hits
 - Reduces load and improves response times
-
-Recommended values:
-- `60` - 1 minute (near real-time)
-- `300` - 5 minutes (default, good balance)
-- `3600` - 1 hour (for less volatile data)
 
 ## How It Works
 
@@ -143,6 +165,6 @@ The worker makes requests to Yahoo Finance's public quote API and returns the `r
 
 ## Disclaimer
 
-This project is **not affiliated with, endorsed by, or in any way officially connected with Yahoo, Yahoo Finance, or any of their subsidiaries or affiliates**. The official Yahoo Finance website can be found at https://finance.yahoo.com.
+This project is **not affiliated with, endorsed by, or in any way officially connected with Yahoo, Yahoo Finance, or any of their subsidiaries or affiliates**. The official Yahoo Finance website can be found at [finance.yahoo.com](https://finance.yahoo.com).
 
 This tool is provided for educational and personal use only. Users are responsible for ensuring their use complies with Yahoo Finance's Terms of Service and any applicable rate limits or usage restrictions. Use at your own risk.
