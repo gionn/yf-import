@@ -1,20 +1,20 @@
 {
-  "name": "yf-import",
-  "version": "1.0.0",
-  "description": "Simple API returning quotes",
-  "main": "src/index.ts",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "start": "wrangler dev",
-    "generate-types": "wrangler types",
-    "type-check": "generate-types && tsc"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "typescript": "^5.3.3",
-    "wrangler": "^4.63.0"
-  }
+	"name": "yf-import",
+	"version": "1.0.0",
+	"description": "Simple API returning quotes",
+	"main": "src/index.ts",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"start": "wrangler dev",
+		"generate-types": "wrangler types",
+		"type-check": "generate-types && tsc"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "MIT",
+	"devDependencies": {
+		"typescript": "^5.3.3",
+		"wrangler": "^4.63.0"
+	}
 }
