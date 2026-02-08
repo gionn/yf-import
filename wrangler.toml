@@ -1,6 +1,6 @@
-name = "yahoof2sheet"
+name = "yf-import"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-01-20"
 
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]
