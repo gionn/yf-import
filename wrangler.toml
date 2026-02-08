@@ -2,6 +2,10 @@ name = "yf-import"
 main = "src/index.ts"
 compatibility_date = "2026-01-20"
 
+# Cache configuration: time in seconds
+[vars]
+CACHE_TTL = "14400"
+
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]
 # binding = "QUOTES_KV"

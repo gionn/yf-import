@@ -9,6 +9,7 @@ A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance. Retu
 - 🌐 Global availability with low latency
 - 💰 Free tier: 100,000 requests/day
 - 🔒 No API key required
+- 🗄️ Configurable edge caching (default: 4 hours)
 
 ## Prerequisites
 
@@ -66,6 +67,27 @@ Your worker will be deployed to: `https://yf-import.<your-subdomain>.workers.dev
 - `wrangler.toml` - Cloudflare Workers configuration
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` - TypeScript configuration
+
+## Configuration
+
+### Cache TTL
+
+Configure cache duration in [wrangler.toml](wrangler.toml):
+
+```toml
+[vars]
+CACHE_TTL = "300"  # Cache for 5 minutes (300 seconds)
+```
+
+Responses are cached at Cloudflare's edge using `Cache-Control` headers. This means:
+- Same quote requests within the TTL window are served instantly from cache
+- No API calls to Yahoo Finance during cache hits
+- Reduces load and improves response times
+
+Recommended values:
+- `60` - 1 minute (near real-time)
+- `300` - 5 minutes (default, good balance)
+- `3600` - 1 hour (for less volatile data)
 
 ## How It Works
 

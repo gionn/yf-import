@@ -1,6 +1,5 @@
 export interface Env {
-	// Define your environment variables here
-	// Example: KV namespace, secrets, etc.
+	CACHE_TTL?: string; // Cache time-to-live in seconds
 }
 
 async function getYahooQuote(symbol: string): Promise<number | null> {
@@ -44,10 +43,13 @@ export default {
 					});
 				}
 				
-				return new Response(price.toString(), {
+				const cacheTTL = parseInt(env.CACHE_TTL || '300', 10);
+				
+return new Response(price.toString(), {
 					status: 200,
 					headers: {
 						'Content-Type': 'text/plain',
+						'Cache-Control': `public, max-age=${cacheTTL}`,
 					},
 				});
 			} catch (error) {
