@@ -1,4 +1,4 @@
-name = "yahoof2sheet"
+name = "yf-import"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
