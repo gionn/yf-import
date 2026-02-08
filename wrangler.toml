@@ -1,0 +1,8 @@
+name = "yahoof2sheet"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Uncomment to use KV for caching/storage
+# [[kv_namespaces]]
+# binding = "QUOTES_KV"
+# id = "your-kv-namespace-id"
