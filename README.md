@@ -2,6 +2,12 @@
 
 A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance. Returns the current market price for any stock symbol in plain text format.
 
+Perfect to be used with the Google Sheet `IMPORTDATA` function, e.g.:
+
+```text
+=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/VUAA.MI")
+```
+
 ## Features
 
 - ⚡ Fast edge-deployed API using Cloudflare Workers
@@ -134,3 +140,9 @@ Recommended values:
 ## How It Works
 
 The worker makes requests to Yahoo Finance's public quote API and returns the `regularMarketPrice` field. It uses Cloudflare's edge runtime with the standard `fetch` API, making it fast and efficient.
+
+## Disclaimer
+
+This project is **not affiliated with, endorsed by, or in any way officially connected with Yahoo, Yahoo Finance, or any of their subsidiaries or affiliates**. The official Yahoo Finance website can be found at https://finance.yahoo.com.
+
+This tool is provided for educational and personal use only. Users are responsible for ensuring their use complies with Yahoo Finance's Terms of Service and any applicable rate limits or usage restrictions. Use at your own risk.
