@@ -10,9 +10,9 @@ prices, especially useful for European securities that Google Finance doesn't
 handle well.
 
 ```text
-=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/VUAA.MI")
-=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/VWCE.DE")
-=IMPORTDATA("https://yf-import.me-1fc.workers.dev/api/quotes/AAPL")
+=IMPORTDATA("https://yf-import.gionn.net/api/quotes/VUAA.MI")
+=IMPORTDATA("https://yf-import.gionn.net/api/quotes/VWCE.DE")
+=IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
 ## Features
