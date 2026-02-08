@@ -11,19 +11,75 @@ A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance. Retu
 - 🔒 No API key required
 - 🗄️ Configurable edge caching (default: 4 hours)
 
-## Prerequisites
+## Deployment to Cloudflare Workers
 
-- Node.js (v18 or later)
-- npm or yarn
-- Cloudflare account (for deployment)
+### Prerequisites
 
-## Installation
+- GitHub account
+- Cloudflare account (free tier available)
+
+### Cloudflare Workers Free Tier Limits
+
+- 100,000 requests per day
+- 10ms CPU time per invocation (external API wait time is free)
+- No duration charges
+
+Perfect for personal projects and medium-traffic applications.
+
+### Option 1: Deploy from GitHub (Recommended)
+
+1. **Fork the repository on GitHub:**
+   - Go to the [repository page](https://github.com/gionn/yf-import)
+   - Click the **Fork** button in the top right corner
+   - Select your account as the destination
+
+2. **Connect to Cloudflare:**
+   - Go to [dash.cloudflare.com](https://dash.cloudflare.com)
+   - Navigate to **Workers & Pages** from the left sidebar
+   - Click **Create Application**
+
+3. **Connect your GitHub repository:**
+   - Click **Connect GitHub** and authorize Cloudflare
+   - Select your forked repository (`yf-import`)
+   - Click **Begin setup**
+
+4. **Configure the build:**
+   - **Project name:** `yf-import` (or your preferred name)
+   - Click **Deploy**
+
+5. **Configure environment variables (optional):**
+   - After deployment, go to **Settings** > **Environment variables**
+   - Add `CACHE_TTL` with your desired value (e.g., `300` for 5 minutes)
+   - Click **Save**
+
+Your worker will be available at: `https://yf-import.<account-id>.pages.dev`
+
+Every push to your GitHub repository will automatically trigger a new deployment.
+
+### Option 2: Deploy via Wrangler CLI
+
+For developers who prefer the command line:
+
+```bash
+# Install dependencies
+npm install
+
+# Login to Cloudflare
+npx wrangler login
+
+# Deploy
+npm run deploy
+```
+
+## Development
+
+### Installation
 
 ```bash
 npm install
 ```
 
-## Running Locally
+### Running Locally
 
 ```bash
 npm run dev
@@ -39,27 +95,13 @@ The API will be available at `http://localhost:8787`
 curl http://localhost:8787/api/quotes/AAPL
 # Returns: 189.25
 
-curl http://localhost:8787/api/quotes/VWCE
+curl http://localhost:8787/api/quotes/VWCE.MI
 # Returns: 112.34
 ```
 
 The API endpoint format is: `/api/quotes/{SYMBOL}`
 
-Supports any valid Yahoo Finance stock symbol (AAPL, GOOGL, MSFT, VWCE, etc.)
-
-## Deployment to Cloudflare Workers
-
-1. Login to Cloudflare:
-```bash
-npx wrangler login
-```
-
-2. Deploy:
-```bash
-npm run deploy
-```
-
-Your worker will be deployed to: `https://yf-import.<your-subdomain>.workers.dev`
+Supports any valid Yahoo Finance stock symbol (AAPL, GOOGL, MSFT, VWCE.MI, etc.)
 
 ## Project Structure
 
@@ -92,11 +134,3 @@ Recommended values:
 ## How It Works
 
 The worker makes requests to Yahoo Finance's public quote API and returns the `regularMarketPrice` field. It uses Cloudflare's edge runtime with the standard `fetch` API, making it fast and efficient.
-
-## Cloudflare Workers Free Tier Limits
-
-- 100,000 requests per day
-- 10ms CPU time per invocation (external API wait time is free)
-- No duration charges
-
-Perfect for personal projects and medium-traffic applications.
