@@ -110,6 +110,40 @@ npm run deploy
 npm install
 ```
 
+### Pre-commit hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to automatically check
+code quality before commits. It's highly recommended to enable it to catch
+issues early and maintain code consistency.
+
+**Install pre-commit:**
+
+```bash
+pip install pre-commit
+```
+
+**Enable hooks for this repository:**
+
+```bash
+pre-commit install
+```
+
+The hooks will now run automatically on every commit, checking:
+
+- YAML, JSON, and TOML syntax
+- Code formatting and linting with Biome
+- Trailing whitespace and end-of-file fixes
+
+**Run hooks manually (optional):**
+
+```bash
+# Check all files
+pre-commit run --all-files
+
+# Check staged files only
+pre-commit run
+```
+
 ### Running Locally
 
 ```bash
