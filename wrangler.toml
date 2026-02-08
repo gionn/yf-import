@@ -10,3 +10,8 @@ CACHE_TTL = "14400"
 # [[kv_namespaces]]
 # binding = "QUOTES_KV"
 # id = "your-kv-namespace-id"
+
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
