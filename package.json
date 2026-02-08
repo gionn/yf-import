@@ -8,13 +8,17 @@
 		"deploy": "wrangler deploy",
 		"start": "wrangler dev",
 		"generate-types": "wrangler types",
-		"type-check": "generate-types && tsc"
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.10",
 		"typescript": "^5.3.3",
+		"vitest": "~3.2.0",
 		"wrangler": "^4.63.0"
 	}
 }
