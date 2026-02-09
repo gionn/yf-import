@@ -60,7 +60,6 @@ describe("Quotes API", () => {
 			expect(await response.text()).toBe("150.25");
 			expect(response.headers.get("Content-Type")).toBe("text/plain");
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
-			expect(response.headers.get("X-Cache")).toBe("MISS");
 			expect(mockCache.put).toHaveBeenCalledOnce();
 		});
 
@@ -139,7 +138,6 @@ describe("Quotes API", () => {
 				headers: {
 					"Content-Type": "text/plain",
 					"Cache-Control": "public, max-age=300",
-					"X-Cache": "MISS",
 				},
 			});
 			mockCache.match.mockResolvedValueOnce(cachedResponse);
@@ -149,7 +147,6 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe("175.50");
-			expect(response.headers.get("X-Cache")).toBe("HIT");
 			// Should not call Yahoo API on cache hit
 			expect(global.fetch).not.toHaveBeenCalled();
 			// Should not put to cache again
@@ -169,7 +166,6 @@ describe("Quotes API", () => {
 
 			expect(response1.status).toBe(200);
 			expect(await response1.text()).toBe("150.25");
-			expect(response1.headers.get("X-Cache")).toBe("MISS");
 
 			// Second request, different symbol (cache miss)
 			mockCache.match.mockResolvedValueOnce(undefined);
@@ -183,7 +179,6 @@ describe("Quotes API", () => {
 
 			expect(response2.status).toBe(200);
 			expect(await response2.text()).toBe("2500.75");
-			expect(response2.headers.get("X-Cache")).toBe("MISS");
 
 			// Verify cache.put was called twice
 			expect(mockCache.put).toHaveBeenCalledTimes(2);
@@ -239,7 +234,6 @@ describe("Integration Tests", () => {
 			expect(Number.isNaN(price)).toBe(false);
 			expect(response.headers.get("Content-Type")).toBe("text/plain");
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
-			expect(response.headers.get("X-Cache")).toBe("MISS");
 		});
 	});
 });

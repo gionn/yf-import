@@ -44,14 +44,8 @@ export default {
 			let response = await cache.match(cacheKey);
 
 			if (response) {
-				// Return cached response with cache hit header
-				const headers = new Headers(response.headers);
-				headers.set("X-Cache", "HIT");
-				return new Response(response.body, {
-					status: response.status,
-					statusText: response.statusText,
-					headers,
-				});
+				// Return cached response
+				return response;
 			}
 
 			// Cache miss - fetch from Yahoo Finance
@@ -72,7 +66,6 @@ export default {
 					headers: {
 						"Content-Type": "text/plain",
 						"Cache-Control": `public, max-age=${cacheTTL}`,
-						"X-Cache": "MISS",
 					},
 				});
 
