@@ -34,7 +34,27 @@ export default {
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
 		if (match) {
 			const symbol = match[1];
+			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
+			// Create cache key from the request URL
+			const cacheKey = new Request(url.toString(), request);
+			const cache = caches.default;
+
+			// Check if we have a cached response
+			let response = await cache.match(cacheKey);
+
+			if (response) {
+				// Return cached response with cache hit header
+				const headers = new Headers(response.headers);
+				headers.set("X-Cache", "HIT");
+				return new Response(response.body, {
+					status: response.status,
+					statusText: response.statusText,
+					headers,
+				});
+			}
+
+			// Cache miss - fetch from Yahoo Finance
 			try {
 				const price = await getYahooQuote(symbol);
 
@@ -47,15 +67,20 @@ export default {
 					});
 				}
 
-				const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
-
-				return new Response(price.toString(), {
+				response = new Response(price.toString(), {
 					status: 200,
 					headers: {
 						"Content-Type": "text/plain",
 						"Cache-Control": `public, max-age=${cacheTTL}`,
+						"X-Cache": "MISS",
 					},
 				});
+
+				// Store the response in cache
+				// Clone the response before caching since response body can only be read once
+				ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+				return response;
 			} catch (error) {
 				return new Response(
 					`Error fetching quote: ${error instanceof Error ? error.message : "Unknown error"}`,
