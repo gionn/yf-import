@@ -5,6 +5,7 @@ compatibility_date = "2026-01-20"
 # Cache configuration: time in seconds
 [vars]
 CACHE_TTL = "14400"
+# USER_AGENT = "" # or set in Cloudflare dashboard: Settings > Variables
 
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]

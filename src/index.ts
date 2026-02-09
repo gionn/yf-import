@@ -1,15 +1,20 @@
 export interface Env {
 	CACHE_TTL?: string; // Cache time-to-live in seconds
+	USER_AGENT?: string; // User agent for API requests
 }
 
-async function getYahooQuote(symbol: string): Promise<number | null> {
-	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+const DEFAULT_USER_AGENT = "Mozilla/5.0";
 
-	const response = await fetch(url, {
-		headers: {
-			"User-Agent": "Mozilla/5.0",
-		},
-	});
+async function getYahooQuote(
+	symbol: string,
+	userAgent: string,
+): Promise<number | null> {
+	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+	const headers = {
+		"User-Agent": userAgent,
+	};
+
+	const response = await fetch(url, { headers });
 
 	if (!response.ok) {
 		throw new Error(`Yahoo Finance API error: ${response.status}`);
@@ -36,7 +41,8 @@ export default {
 			const symbol = match[1];
 
 			try {
-				const price = await getYahooQuote(symbol);
+				const userAgent = env.USER_AGENT || DEFAULT_USER_AGENT;
+				const price = await getYahooQuote(symbol, userAgent);
 
 				if (price === null) {
 					return new Response("Price not available", {
