@@ -1,4 +1,8 @@
-import { env } from "cloudflare:test";
+import {
+	createExecutionContext,
+	env,
+	waitOnExecutionContext,
+} from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 
@@ -17,17 +21,12 @@ const mockYahooResponse = (price: number) => ({
 
 describe("Quotes API", () => {
 	describe("GET /api/quotes/:symbol", () => {
-		let mockContext: ExecutionContext;
+		let ctx: ExecutionContext;
 
 		beforeEach(() => {
 			// Mock fetch for unit tests
 			vi.stubGlobal("fetch", vi.fn());
-
-			// Mock ExecutionContext
-			mockContext = {
-				waitUntil: vi.fn(),
-				passThroughOnException: vi.fn(),
-			} as any;
+			ctx = createExecutionContext();
 		});
 
 		afterEach(() => {
@@ -43,7 +42,7 @@ describe("Quotes API", () => {
 			});
 
 			const request = new Request("http://localhost/api/quotes/AAPL");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe("150.25");
@@ -59,7 +58,7 @@ describe("Quotes API", () => {
 			});
 
 			const request = new Request("http://localhost/api/quotes/INVALID");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Price not available");
@@ -73,7 +72,7 @@ describe("Quotes API", () => {
 			});
 
 			const request = new Request("http://localhost/api/quotes/AAPL");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(500);
 			expect(await response.text()).toContain("Error fetching quote");
@@ -88,7 +87,7 @@ describe("Quotes API", () => {
 			});
 
 			const request = new Request("http://localhost/api/quotes/TSLA");
-			const response = await worker.fetch(request, customEnv, mockContext);
+			const response = await worker.fetch(request, customEnv, ctx);
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get("Cache-Control")).toBe("public, max-age=600");
@@ -101,7 +100,7 @@ describe("Quotes API", () => {
 			});
 
 			const request = new Request("http://localhost/api/quotes/GOOGL");
-			const response = await worker.fetch(request, {}, mockContext);
+			const response = await worker.fetch(request, {}, ctx);
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
@@ -115,7 +114,7 @@ describe("Quotes API", () => {
 			});
 
 			const request1 = new Request("http://localhost/api/quotes/MSFT");
-			const response1 = await worker.fetch(request1, env, mockContext);
+			const response1 = await worker.fetch(request1, env, ctx);
 
 			expect(response1.status).toBe(200);
 			expect(await response1.text()).toBe("175.5");
@@ -123,7 +122,7 @@ describe("Quotes API", () => {
 
 			// Second request - should hit cache
 			const request2 = new Request("http://localhost/api/quotes/MSFT");
-			const response2 = await worker.fetch(request2, env, mockContext);
+			const response2 = await worker.fetch(request2, env, ctx);
 
 			expect(response2.status).toBe(200);
 			expect(await response2.text()).toBe("175.5");
@@ -140,7 +139,7 @@ describe("Quotes API", () => {
 			});
 
 			const request1 = new Request("http://localhost/api/quotes/AMZN");
-			const response1 = await worker.fetch(request1, env, mockContext);
+			const response1 = await worker.fetch(request1, env, ctx);
 
 			expect(response1.status).toBe(200);
 			expect(await response1.text()).toBe("150.25");
@@ -152,7 +151,7 @@ describe("Quotes API", () => {
 			});
 
 			const request2 = new Request("http://localhost/api/quotes/NVDA");
-			const response2 = await worker.fetch(request2, env, mockContext);
+			const response2 = await worker.fetch(request2, env, ctx);
 
 			expect(response2.status).toBe(200);
 			expect(await response2.text()).toBe("2500.75");
@@ -165,7 +164,9 @@ describe("Quotes API", () => {
 	describe("Other routes", () => {
 		it("should return 404 for unknown routes", async () => {
 			const mockContext = {
-				waitUntil: vi.fn(),
+				waitUntil: async (promise: Promise<any>) => {
+					await promise;
+				},
 				passThroughOnException: vi.fn(),
 			} as any;
 
@@ -178,7 +179,9 @@ describe("Quotes API", () => {
 
 		it("should return 404 for root path", async () => {
 			const mockContext = {
-				waitUntil: vi.fn(),
+				waitUntil: async (promise: Promise<any>) => {
+					await promise;
+				},
 				passThroughOnException: vi.fn(),
 			} as any;
 
@@ -195,7 +198,9 @@ describe("Integration Tests", () => {
 	describe("Real Yahoo Finance API", () => {
 		it("should fetch real quote for VWCE.MI", { timeout: 10000 }, async () => {
 			const mockContext = {
-				waitUntil: vi.fn(),
+				waitUntil: async (promise: Promise<any>) => {
+					await promise;
+				},
 				passThroughOnException: vi.fn(),
 			} as any;
 

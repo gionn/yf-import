@@ -71,7 +71,7 @@ export default {
 
 				// Store the response in cache
 				// Clone the response before caching since response body can only be read once
-				await cache.put(cacheKey, response.clone());
+				ctx.waitUntil(cache.put(cacheKey, response.clone()));
 
 				return response;
 			} catch (error) {
