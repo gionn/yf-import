@@ -242,15 +242,10 @@ describe("Quotes API", () => {
 describe("Integration Tests", () => {
 	describe("Real Yahoo Finance API", () => {
 		it("should fetch real quote for VWCE.MI", { timeout: 10000 }, async () => {
-			const mockContext = {
-				waitUntil: async (promise: Promise<any>) => {
-					await promise;
-				},
-				passThroughOnException: vi.fn(),
-			} as any;
+			const ctx = createExecutionContext();
 
 			const request = new Request("http://localhost/api/quotes/VWCE.MI");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			const responseText = await response.text();
 
