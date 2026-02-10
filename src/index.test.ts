@@ -208,30 +208,18 @@ describe("Quotes API", () => {
 
 	describe("Other routes", () => {
 		it("should return 404 for unknown routes", async () => {
-			const mockContext = {
-				waitUntil: async (promise: Promise<any>) => {
-					await promise;
-				},
-				passThroughOnException: vi.fn(),
-			} as any;
-
+			const ctx = createExecutionContext();
 			const request = new Request("http://localhost/unknown");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Not Found");
 		});
 
 		it("should return 404 for root path", async () => {
-			const mockContext = {
-				waitUntil: async (promise: Promise<any>) => {
-					await promise;
-				},
-				passThroughOnException: vi.fn(),
-			} as any;
-
+			const ctx = createExecutionContext();
 			const request = new Request("http://localhost/");
-			const response = await worker.fetch(request, env, mockContext);
+			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Not Found");
