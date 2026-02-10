@@ -30,14 +30,13 @@ export default {
 	): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle /api/quotes/:symbol endpoint
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
-		if (match) {
+		if (match && request.method === "GET") {
 			const symbol = match[1];
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
 			// Create cache key from the request URL
-			const cacheKey = new Request(url.toString(), request);
+			const cacheKey = new Request(`${url.origin}${url.pathname}`, request);
 			const cache = caches.default;
 
 			// Check if we have a cached response

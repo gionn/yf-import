@@ -159,6 +159,51 @@ describe("Quotes API", () => {
 			// Verify fetch was called twice (once per symbol)
 			expect(global.fetch).toHaveBeenCalledTimes(2);
 		});
+
+		it("should only respond to GET requests", async () => {
+			const request = new Request("http://localhost/api/quotes/AAPL", {
+				method: "POST",
+			});
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Not Found");
+		});
+
+		it("should ignore query params in cache key", async () => {
+			// First request with query params
+			(global.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(100.5),
+			});
+
+			const request1 = new Request("http://localhost/api/quotes/AAPL?foo=bar");
+			const response1 = await worker.fetch(request1, env, ctx);
+
+			expect(response1.status).toBe(200);
+			expect(await response1.text()).toBe("100.5");
+			expect(global.fetch).toHaveBeenCalledOnce();
+
+			// Second request with different query params - should hit cache
+			const request2 = new Request("http://localhost/api/quotes/AAPL?baz=qux");
+			const response2 = await worker.fetch(request2, env, ctx);
+
+			expect(response2.status).toBe(200);
+			expect(await response2.text()).toBe("100.5");
+			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
+			// Should still be called only once (cache hit)
+			expect(global.fetch).toHaveBeenCalledOnce();
+
+			// Third request without query params - should also hit cache
+			const request3 = new Request("http://localhost/api/quotes/AAPL");
+			const response3 = await worker.fetch(request3, env, ctx);
+
+			expect(response3.status).toBe(200);
+			expect(await response3.text()).toBe("100.5");
+			expect(response3.headers.get("CF-Cache-Status")).toBe("HIT");
+			// Should still be called only once (cache hit)
+			expect(global.fetch).toHaveBeenCalledOnce();
+		});
 	});
 
 	describe("Other routes", () => {
