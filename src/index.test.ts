@@ -36,7 +36,7 @@ describe("Quotes API", () => {
 
 		it("should return stock price for valid symbol", async () => {
 			// Mock Yahoo Finance API response
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(150.25),
 			});
@@ -52,7 +52,7 @@ describe("Quotes API", () => {
 
 		it("should return 404 when price is not available", async () => {
 			// Mock API response with no price
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({ chart: { result: [{ meta: {} }] } }),
 			});
@@ -66,7 +66,7 @@ describe("Quotes API", () => {
 
 		it("should return 500 when Yahoo Finance API fails", async () => {
 			// Mock API error response
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
 				status: 500,
 			});
@@ -81,7 +81,7 @@ describe("Quotes API", () => {
 		it("should use custom cache TTL from environment", async () => {
 			const customEnv = { CACHE_TTL: "600" };
 
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(100.5),
 			});
@@ -94,7 +94,7 @@ describe("Quotes API", () => {
 		});
 
 		it("should use default cache TTL when not specified", async () => {
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(200.75),
 			});
@@ -108,7 +108,7 @@ describe("Quotes API", () => {
 
 		it("should return cached response on cache hit", async () => {
 			// First request - cache miss
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(175.5),
 			});
@@ -118,7 +118,7 @@ describe("Quotes API", () => {
 
 			expect(response1.status).toBe(200);
 			expect(await response1.text()).toBe("175.5");
-			expect(global.fetch).toHaveBeenCalledOnce();
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			// Second request - should hit cache
 			const request2 = new Request("http://localhost/api/quotes/MSFT");
@@ -128,12 +128,12 @@ describe("Quotes API", () => {
 			expect(await response2.text()).toBe("175.5");
 			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
 			// Should still be called only once (cache hit)
-			expect(global.fetch).toHaveBeenCalledOnce();
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 		});
 
 		it("should handle cache with different symbols independently", async () => {
 			// First request (cache miss)
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(150.25),
 			});
@@ -145,7 +145,7 @@ describe("Quotes API", () => {
 			expect(await response1.text()).toBe("150.25");
 
 			// Second request, different symbol (cache miss)
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(2500.75),
 			});
@@ -157,7 +157,7 @@ describe("Quotes API", () => {
 			expect(await response2.text()).toBe("2500.75");
 
 			// Verify fetch was called twice (once per symbol)
-			expect(global.fetch).toHaveBeenCalledTimes(2);
+			expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 		});
 
 		it("should only respond to GET requests", async () => {
@@ -172,7 +172,7 @@ describe("Quotes API", () => {
 
 		it("should ignore query params in cache key", async () => {
 			// First request with query params
-			(global.fetch as any).mockResolvedValueOnce({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
 				json: async () => mockYahooResponse(100.5),
 			});
@@ -182,7 +182,7 @@ describe("Quotes API", () => {
 
 			expect(response1.status).toBe(200);
 			expect(await response1.text()).toBe("100.5");
-			expect(global.fetch).toHaveBeenCalledOnce();
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			// Second request with different query params - should hit cache
 			const request2 = new Request("http://localhost/api/quotes/AAPL?baz=qux");
@@ -192,7 +192,7 @@ describe("Quotes API", () => {
 			expect(await response2.text()).toBe("100.5");
 			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
 			// Should still be called only once (cache hit)
-			expect(global.fetch).toHaveBeenCalledOnce();
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			// Third request without query params - should also hit cache
 			const request3 = new Request("http://localhost/api/quotes/AAPL");
@@ -202,7 +202,7 @@ describe("Quotes API", () => {
 			expect(await response3.text()).toBe("100.5");
 			expect(response3.headers.get("CF-Cache-Status")).toBe("HIT");
 			// Should still be called only once (cache hit)
-			expect(global.fetch).toHaveBeenCalledOnce();
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 		});
 	});
 
