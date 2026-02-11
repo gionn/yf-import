@@ -2,12 +2,13 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance and
-returns them in plain text format - perfect for importing into spreadsheets.
+A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance
+public charts API and returns them in plain text format, perfect for importing
+into Google Sheets.
 
-**Built for Google Sheets**: Use the `IMPORTDATA` function to easily pull stock
-prices, especially useful for European securities that Google Finance doesn't
-handle well.
+**For Google Sheets**: Use the `IMPORTDATA` function to easily pull any asset
+price available on Yahoo Finance. This is especially useful for European
+securities that Google Finance (via `GOOGLEFINANCE` function) stopped serving.
 
 ```text
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/VUAA.MI")
@@ -15,29 +16,19 @@ handle well.
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
+You can easily find a symbol by looking at the Yahoo Finance URL when
+viewing an asset page.
+
 ## Features
 
 - ⚡ Fast edge-deployed API using Cloudflare Workers
-- � Plain text response - ideal for `IMPORTDATA()` in Google Sheets
+- 📝 Plain text response — ideal for `IMPORTDATA()` in Google Sheets
 - 📈 Real-time stock prices from Yahoo Finance
 - 🌐 Global availability with low latency
-- 💰 Free tier: 100,000 requests/day
+- 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
-- 🗄️ Smart edge caching (default: 4 hours)
+- 🗄️ Edge caching
 - 🌍 Works with international stock symbols (US, European, Asian markets)
-
-## Quick Start
-
-### Using the Public Instance
-
-You can use my public instance directly in your Google Sheets:
-
-```
-=IMPORTDATA("https://yf-import.gionn.net/api/quotes/YOUR_SYMBOL")
-```
-
-Replace `YOUR_SYMBOL` with any valid Yahoo Finance symbol (e.g., AAPL, VUAA.MI,
-VWCE.DE).
 
 ## Deployment to Cloudflare Workers
 
@@ -171,6 +162,7 @@ Supports any valid Yahoo Finance stock symbol (AAPL, GOOGL, MSFT, VWCE.MI, etc.)
 ## Project Structure
 
 - `src/index.ts` - Main worker code with Yahoo Finance API integration
+- `src/index.test.ts` - Automated tests for the worker
 - `wrangler.toml` - Cloudflare Workers configuration
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` - TypeScript configuration
@@ -192,6 +184,20 @@ means:
 - Same quote requests within the TTL window are served instantly from cache
 - No API calls to Yahoo Finance during cache hits
 - Reduces load and improves response times
+
+### Root redirect
+
+Configure root URL redirect in [wrangler.toml](wrangler.toml):
+
+```toml
+[vars]
+ROOT_REDIRECT_URL = "https://your-redirect-url.com"
+```
+
+When a user visits the root URL of the worker (e.g.,
+`https://yf-import.<account-id>.workers.dev/`), they will be automatically
+redirected to the specified URL. This is useful for directing users to
+documentation, a homepage, or any relevant resource.
 
 ## How It Works
 
