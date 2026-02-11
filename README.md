@@ -15,8 +15,8 @@ securities that Google Finance (via `GOOGLEFINANCE` function) stopped serving.
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
-You can easily retrieve a symbol by looking at the Yahoo Finance URL after
-opening an asset page.
+You can easily find a symbol by looking at the Yahoo Finance URL when
+viewing an asset page.
 
 ## Features
 
