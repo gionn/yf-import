@@ -229,7 +229,7 @@ describe("Quotes API", () => {
 	describe("Root path redirect", () => {
 		it("should redirect to configured URL with 301 status", async () => {
 			const ctx = createExecutionContext();
-			const customEnv = { REDIRECT_URL: "https://example.com" };
+			const customEnv = { ROOT_REDIRECT_URL: "https://example.com" };
 			const request = new Request("http://localhost/");
 			const response = await worker.fetch(request, customEnv, ctx);
 
@@ -239,7 +239,7 @@ describe("Quotes API", () => {
 
 		it("should return 404 for invalid redirect URL", async () => {
 			const ctx = createExecutionContext();
-			const customEnv = { REDIRECT_URL: "not-a-valid-url" };
+			const customEnv = { ROOT_REDIRECT_URL: "not-a-valid-url" };
 			const request = new Request("http://localhost/");
 			const response = await worker.fetch(request, customEnv, ctx);
 
@@ -248,7 +248,7 @@ describe("Quotes API", () => {
 
 		it("should only redirect exact root path, not other paths", async () => {
 			const ctx = createExecutionContext();
-			const customEnv = { REDIRECT_URL: "https://example.com" };
+			const customEnv = { ROOT_REDIRECT_URL: "https://example.com" };
 			const request = new Request("http://localhost/other");
 			const response = await worker.fetch(request, customEnv, ctx);
 

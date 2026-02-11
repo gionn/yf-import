@@ -1,6 +1,6 @@
 export interface Env {
 	CACHE_TTL?: string; // Cache time-to-live in seconds
-	REDIRECT_URL?: string; // URL to redirect root path to
+	ROOT_REDIRECT_URL?: string; // URL to redirect root path to
 }
 
 async function getYahooQuote(symbol: string): Promise<number | null> {
@@ -35,10 +35,10 @@ export default {
 		if (
 			url.pathname === "/" &&
 			request.method === "GET" &&
-			env.REDIRECT_URL &&
-			isValidUrl(env.REDIRECT_URL)
+			env.ROOT_REDIRECT_URL &&
+			isValidUrl(env.ROOT_REDIRECT_URL)
 		) {
-			return Response.redirect(env.REDIRECT_URL, 301);
+			return Response.redirect(env.ROOT_REDIRECT_URL, 301);
 		}
 
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
