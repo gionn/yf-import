@@ -1,5 +1,6 @@
 export interface Env {
 	CACHE_TTL?: string; // Cache time-to-live in seconds
+	ROOT_REDIRECT_URL?: string; // URL to redirect root path to
 }
 
 async function getYahooQuote(symbol: string): Promise<number | null> {
@@ -86,6 +87,16 @@ export default {
 			}
 		}
 
+		// Handle root path redirect
+		if (
+			url.pathname === "/" &&
+			request.method === "GET" &&
+			env.ROOT_REDIRECT_URL &&
+			isValidUrl(env.ROOT_REDIRECT_URL)
+		) {
+			return Response.redirect(env.ROOT_REDIRECT_URL, 301);
+		}
+
 		// Handle 404 for other routes
 		return new Response("Not Found", {
 			status: 404,
@@ -95,3 +106,12 @@ export default {
 		});
 	},
 };
+
+function isValidUrl(urlString: string): boolean {
+	try {
+		const url = new URL(urlString);
+		return url.protocol === "http:" || url.protocol === "https:";
+	} catch {
+		return false;
+	}
+}

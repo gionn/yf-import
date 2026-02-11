@@ -5,6 +5,7 @@ compatibility_date = "2026-01-20"
 # Cache configuration: time in seconds
 [vars]
 CACHE_TTL = "14400"
+ROOT_REDIRECT_URL = "https://gionn.net/2026/google-sheets-yahoo-finance-fix/"
 
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]

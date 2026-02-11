@@ -216,10 +216,41 @@ describe("Quotes API", () => {
 			expect(await response.text()).toBe("Not Found");
 		});
 
-		it("should return 404 for root path", async () => {
+		it("should return 404 for root path when no redirect is configured", async () => {
 			const ctx = createExecutionContext();
 			const request = new Request("http://localhost/");
-			const response = await worker.fetch(request, env, ctx);
+			const response = await worker.fetch(request, {}, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Not Found");
+		});
+	});
+
+	describe("Root path redirect", () => {
+		it("should redirect to configured URL with 301 status", async () => {
+			const ctx = createExecutionContext();
+			const customEnv = { ROOT_REDIRECT_URL: "https://example.com" };
+			const request = new Request("http://localhost/");
+			const response = await worker.fetch(request, customEnv, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe("https://example.com/");
+		});
+
+		it("should return 404 for invalid redirect URL", async () => {
+			const ctx = createExecutionContext();
+			const customEnv = { ROOT_REDIRECT_URL: "not-a-valid-url" };
+			const request = new Request("http://localhost/");
+			const response = await worker.fetch(request, customEnv, ctx);
+
+			expect(response.status).toBe(404);
+		});
+
+		it("should only redirect exact root path, not other paths", async () => {
+			const ctx = createExecutionContext();
+			const customEnv = { ROOT_REDIRECT_URL: "https://example.com" };
+			const request = new Request("http://localhost/other");
+			const response = await worker.fetch(request, customEnv, ctx);
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Not Found");
