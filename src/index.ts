@@ -34,6 +34,7 @@ export default {
 		// Handle root path redirect
 		if (
 			url.pathname === "/" &&
+			request.method === "GET" &&
 			env.REDIRECT_URL &&
 			isValidUrl(env.REDIRECT_URL)
 		) {

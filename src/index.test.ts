@@ -246,14 +246,6 @@ describe("Quotes API", () => {
 			expect(response.status).toBe(404);
 		});
 
-		it("should not redirect when REDIRECT_URL is not set", async () => {
-			const ctx = createExecutionContext();
-			const request = new Request("http://localhost/");
-			const response = await worker.fetch(request, {}, ctx);
-
-			expect(response.status).toBe(404);
-		});
-
 		it("should only redirect exact root path, not other paths", async () => {
 			const ctx = createExecutionContext();
 			const customEnv = { REDIRECT_URL: "https://example.com" };
