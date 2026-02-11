@@ -2,8 +2,9 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance API
-and returns them in plain text format, perfect for importing into Google Sheets.
+A Cloudflare Worker that fetches real-time stock quotes from Yahoo Finance
+public charts API and returns them in plain text format, perfect for importing
+into Google Sheets.
 
 **For Google Sheets**: Use the `IMPORTDATA` function to easily pull any asset
 price available on Yahoo Finance. This is especially useful for European
