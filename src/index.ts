@@ -31,16 +31,6 @@ export default {
 	): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle root path redirect
-		if (
-			url.pathname === "/" &&
-			request.method === "GET" &&
-			env.ROOT_REDIRECT_URL &&
-			isValidUrl(env.ROOT_REDIRECT_URL)
-		) {
-			return Response.redirect(env.ROOT_REDIRECT_URL, 301);
-		}
-
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
 		if (match && request.method === "GET") {
 			const symbol = match[1];
@@ -95,6 +85,16 @@ export default {
 					},
 				);
 			}
+		}
+
+		// Handle root path redirect
+		if (
+			url.pathname === "/" &&
+			request.method === "GET" &&
+			env.ROOT_REDIRECT_URL &&
+			isValidUrl(env.ROOT_REDIRECT_URL)
+		) {
+			return Response.redirect(env.ROOT_REDIRECT_URL, 301);
 		}
 
 		// Handle 404 for other routes
