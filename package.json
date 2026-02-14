@@ -1,7 +1,7 @@
 {
 	"name": "yf-import",
 	"version": "1.0.0",
-	"description": "Simple API returning quotes",
+	"description": "Simple text API for importing Yahoo Finance assets prices in Google Sheets",
 	"main": "src/index.ts",
 	"scripts": {
 		"dev": "wrangler dev",
@@ -13,8 +13,8 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"keywords": [],
-	"author": "",
-	"license": "MIT",
+	"author": "Giovanni Toraldo <me@gionn.net>",
+	"license": "Apache-2.0",
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.12.10",
 		"typescript": "^5.3.3",
