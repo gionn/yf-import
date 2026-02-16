@@ -52,7 +52,7 @@ describe("Quotes API", () => {
 
 		it("should return 404 when price is not available", async () => {
 			// Mock API response with no price
-			(globalThis.fetch as any).mockResolvedValue({
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
 				status: 404,
 			});
@@ -224,7 +224,14 @@ describe("Quotes API", () => {
 		});
 
 		it("should not redirect when rewritten symbol has no price and return 404", async () => {
-			(globalThis.fetch as any).mockResolvedValue({
+			// First call to check if rewritten symbol exists
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			// Second call to fetch untouched symbol also returns 404
+			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
 				status: 404,
 			});
