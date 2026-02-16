@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-all:
         patterns:
