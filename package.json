@@ -16,7 +16,7 @@
 	"author": "Giovanni Toraldo <me@gionn.net>",
 	"license": "Apache-2.0",
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.12.10",
+		"@cloudflare/vitest-pool-workers": "^0.12.12",
 		"typescript": "^5.3.3",
 		"vitest": "~3.2.0",
 		"wrangler": "^4.63.0"
