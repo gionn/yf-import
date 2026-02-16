@@ -23,6 +23,30 @@ async function getYahooQuote(symbol: string): Promise<number | null> {
 	return price ?? null;
 }
 
+async function tryRewriteExchangeSymbol(
+	symbol: string,
+	url: URL,
+): Promise<Response | null> {
+	if (!symbol.includes(":")) return null;
+
+	const [prefix, base] = symbol.split(":");
+	if (prefix.toUpperCase() !== "BIT" || !base) return null;
+
+	const candidate = `${base}.MI`;
+	try {
+		const exists = await getYahooQuote(candidate);
+		if (exists !== null) {
+			return Response.redirect(
+				`${url.origin}/api/quotes/${encodeURIComponent(candidate)}`,
+				301,
+			);
+		}
+	} catch {
+		// ignore errors and fall through to normal handling
+	}
+	return null;
+}
+
 export default {
 	async fetch(
 		request: Request,
@@ -34,6 +58,11 @@ export default {
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
 		if (match && request.method === "GET") {
 			const symbol = match[1];
+
+			// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+			const rewriteRedirect = await tryRewriteExchangeSymbol(symbol, url);
+			if (rewriteRedirect) return rewriteRedirect;
+
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
 			// Create cache key from the request URL

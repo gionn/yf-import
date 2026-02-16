@@ -204,6 +204,37 @@ describe("Quotes API", () => {
 			// Should still be called only once (cache hit)
 			expect(globalThis.fetch).toHaveBeenCalledOnce();
 		});
+
+		it("should rewrite BIT:SYMBOL to SYMBOL.MI and redirect with 301 when exists", async () => {
+			// Mock Yahoo Finance API response for the rewritten symbol
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					chart: { result: [{ meta: { regularMarketPrice: 123.45 } }] },
+				}),
+			});
+
+			const request = new Request("http://localhost/api/quotes/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe(
+				"http://localhost/api/quotes/VWCE.MI",
+			);
+		});
+
+		it("should not redirect when rewritten symbol has no price and return 404", async () => {
+			(globalThis.fetch as any).mockResolvedValue({
+				ok: false,
+				status: 404,
+			});
+
+			const request = new Request("http://localhost/api/quotes/BIT:XXXX");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(await response.text()).toContain("Error fetching quote");
+		});
 	});
 
 	describe("Other routes", () => {
