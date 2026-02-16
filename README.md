@@ -24,6 +24,8 @@ viewing an asset page.
 - ⚡ Fast edge-deployed API using Cloudflare Workers
 - 📝 Plain text response — ideal for `IMPORTDATA()` in Google Sheets
 - 📈 Real-time stock prices from Yahoo Finance
+- 🔁 Automatic symbol rewriting for certain exchange prefixes (e.g., `BIT:VWCE`
+  → `VWCE.MI`)
 - 🌐 Global availability with low latency
 - 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
@@ -158,6 +160,12 @@ curl http://localhost:8787/api/quotes/VWCE.MI
 The API endpoint format is: `/api/quotes/{SYMBOL}`
 
 Supports any valid Yahoo Finance stock symbol (AAPL, GOOGL, MSFT, VWCE.MI, etc.)
+
+The API also understands certain exchange-prefixed symbols. For example,
+`BIT:VWCE` will be rewritten to `VWCE.MI` and, if that symbol exists on Yahoo
+Finance, the worker responds with a 301 redirect to `/api/quotes/VWCE.MI`. This
+allows users to use symbols from Google Finance while still getting the quotes
+from Yahoo Finance.
 
 ## Project Structure
 
