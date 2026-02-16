@@ -12,6 +12,11 @@ async function getYahooQuote(symbol: string): Promise<number | null> {
 		},
 	});
 
+	if (response.status === 404) {
+		// Symbol not found, return null to indicate no price available
+		return null;
+	}
+
 	if (!response.ok) {
 		throw new Error(`Yahoo Finance API error: ${response.status}`);
 	}

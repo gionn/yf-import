@@ -52,9 +52,9 @@ describe("Quotes API", () => {
 
 		it("should return 404 when price is not available", async () => {
 			// Mock API response with no price
-			(globalThis.fetch as any).mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({ chart: { result: [{ meta: {} }] } }),
+			(globalThis.fetch as any).mockResolvedValue({
+				ok: false,
+				status: 404,
 			});
 
 			const request = new Request("http://localhost/api/quotes/INVALID");
@@ -232,8 +232,8 @@ describe("Quotes API", () => {
 			const request = new Request("http://localhost/api/quotes/BIT:XXXX");
 			const response = await worker.fetch(request, env, ctx);
 
-			expect(response.status).toBe(500);
-			expect(await response.text()).toContain("Error fetching quote");
+			expect(response.status).toBe(404);
+			expect(await response.text()).toContain("Price not available");
 		});
 	});
 
