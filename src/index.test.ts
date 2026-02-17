@@ -100,7 +100,7 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe(
-				"Symbol not found, maybe you are looking for SUGG.MI, SUGG.X, SUGG.DE?",
+				"Symbol not found - similar: SUGG.MI SUGG.X SUGG.DE",
 			);
 		});
 

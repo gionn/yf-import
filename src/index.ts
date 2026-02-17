@@ -113,7 +113,7 @@ export default {
 						const suggestions = await searchYahooSymbol(symbol);
 						if (suggestions && suggestions.length > 0) {
 							return new Response(
-								`Symbol not found, maybe you are looking for ${suggestions.join(", ")}?`,
+								`Symbol not found - similar: ${suggestions.join(" ")}`,
 								{
 									status: 200,
 									headers: {
