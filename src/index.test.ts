@@ -52,6 +52,13 @@ describe("Quotes API", () => {
 
 		it("should return 404 when price is not available", async () => {
 			// Mock API response with no price
+			// First call: quote lookup returns 404
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			// Second call: search endpoint returns 404 (no suggestion)
 			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
 				status: 404,
@@ -62,6 +69,30 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Price not available");
+		});
+
+		it("should suggest a symbol when search finds a match", async () => {
+			// First call: quote lookup returns 404 (not found)
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			// Second call: search endpoint returns a suggestion
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ quotes: [{ symbol: "SUGG.MI" }] }),
+			});
+
+			const request = new Request("http://localhost/api/quotes/SUGG");
+			const response = await worker.fetch(
+				request,
+				env,
+				createExecutionContext(),
+			);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Are you looking for SUGG.MI?");
 		});
 
 		it("should return 500 when Yahoo Finance API fails", async () => {

@@ -28,6 +28,22 @@ async function getYahooQuote(symbol: string): Promise<number | null> {
 	return price ?? null;
 }
 
+async function searchYahooSymbol(query: string): Promise<string | null> {
+	const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
+
+	const response = await fetch(url, {
+		headers: {
+			"User-Agent": "Mozilla/5.0",
+		},
+	});
+
+	if (!response.ok) return null;
+
+	const data = (await response.json()) as any;
+	const first = data?.quotes?.[0];
+	return first?.symbol ?? null;
+}
+
 async function tryRewriteExchangeSymbol(
 	symbol: string,
 	url: URL,
@@ -87,6 +103,21 @@ export default {
 				const price = await getYahooQuote(symbol);
 
 				if (price === null) {
+					// If no direct price, try searching for a suggested symbol
+					try {
+						const suggestion = await searchYahooSymbol(symbol);
+						if (suggestion) {
+							return new Response(`Are you looking for ${suggestion}?`, {
+								status: 404,
+								headers: {
+									"Content-Type": "text/plain",
+								},
+							});
+						}
+					} catch {
+						// ignore search errors and fall through to generic 404
+					}
+
 					return new Response("Price not available", {
 						status: 404,
 						headers: {
