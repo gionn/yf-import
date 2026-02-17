@@ -28,7 +28,7 @@ async function getYahooQuote(symbol: string): Promise<number | null> {
 	return price ?? null;
 }
 
-async function searchYahooSymbol(query: string): Promise<string | null> {
+async function searchYahooSymbol(query: string): Promise<string[]> {
 	const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
 
 	const response = await fetch(url, {
@@ -37,11 +37,16 @@ async function searchYahooSymbol(query: string): Promise<string | null> {
 		},
 	});
 
-	if (!response.ok) return null;
+	if (!response.ok) return [];
 
 	const data = (await response.json()) as any;
-	const first = data?.quotes?.[0];
-	return first?.symbol ?? null;
+	const quotes = data?.quotes ?? [];
+	const symbols = quotes
+		.map((q: any) => q?.symbol)
+		.filter((s: any) => typeof s === "string")
+		.slice(0, 3);
+
+	return symbols;
 }
 
 async function tryRewriteExchangeSymbol(
@@ -105,14 +110,17 @@ export default {
 				if (price === null) {
 					// If no direct price, try searching for a suggested symbol
 					try {
-						const suggestion = await searchYahooSymbol(symbol);
-						if (suggestion) {
-							return new Response(`Are you looking for ${suggestion}?`, {
-								status: 404,
-								headers: {
-									"Content-Type": "text/plain",
+						const suggestions = await searchYahooSymbol(symbol);
+						if (suggestions && suggestions.length > 0) {
+							return new Response(
+								`Symbol not found, maybe you are looking for ${suggestions.join(", ")}?`,
+								{
+									status: 200,
+									headers: {
+										"Content-Type": "text/plain",
+									},
 								},
-							});
+							);
 						}
 					} catch {
 						// ignore search errors and fall through to generic 404

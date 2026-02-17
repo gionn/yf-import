@@ -81,7 +81,14 @@ describe("Quotes API", () => {
 			// Second call: search endpoint returns a suggestion
 			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: true,
-				json: async () => ({ quotes: [{ symbol: "SUGG.MI" }] }),
+				json: async () => ({
+					quotes: [
+						{ symbol: "SUGG.MI" },
+						{ symbol: "SUGG.X" },
+						{ symbol: "SUGG.DE" },
+						{ symbol: "SUGG.FR" },
+					],
+				}),
 			});
 
 			const request = new Request("http://localhost/api/quotes/SUGG");
@@ -91,8 +98,10 @@ describe("Quotes API", () => {
 				createExecutionContext(),
 			);
 
-			expect(response.status).toBe(404);
-			expect(await response.text()).toBe("Are you looking for SUGG.MI?");
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe(
+				"Symbol not found, maybe you are looking for SUGG.MI, SUGG.X, SUGG.DE?",
+			);
 		});
 
 		it("should return 500 when Yahoo Finance API fails", async () => {
