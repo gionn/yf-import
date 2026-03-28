@@ -71,7 +71,7 @@ describe("Quotes API", () => {
 				status: 500,
 			});
 
-			const request = new Request("http://localhost/api/quotes/AAPL");
+			const request = new Request("http://localhost/api/quotes/FAIL500");
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(500);
@@ -177,7 +177,9 @@ describe("Quotes API", () => {
 				json: async () => mockYahooResponse(100.5),
 			});
 
-			const request1 = new Request("http://localhost/api/quotes/AAPL?foo=bar");
+			const request1 = new Request(
+				"http://localhost/api/quotes/CACHEKEY?foo=bar",
+			);
 			const response1 = await worker.fetch(request1, env, ctx);
 
 			expect(response1.status).toBe(200);
@@ -185,7 +187,9 @@ describe("Quotes API", () => {
 			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			// Second request with different query params - should hit cache
-			const request2 = new Request("http://localhost/api/quotes/AAPL?baz=qux");
+			const request2 = new Request(
+				"http://localhost/api/quotes/CACHEKEY?baz=qux",
+			);
 			const response2 = await worker.fetch(request2, env, ctx);
 
 			expect(response2.status).toBe(200);
@@ -195,7 +199,7 @@ describe("Quotes API", () => {
 			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			// Third request without query params - should also hit cache
-			const request3 = new Request("http://localhost/api/quotes/AAPL");
+			const request3 = new Request("http://localhost/api/quotes/CACHEKEY");
 			const response3 = await worker.fetch(request3, env, ctx);
 
 			expect(response3.status).toBe(200);
