@@ -17,7 +17,7 @@
 	"license": "Apache-2.0",
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.13.5",
-		"typescript": "^5.3.3",
+		"typescript": "^6.0.2",
 		"vitest": "^4.1.2",
 		"wrangler": "^4.78.0"
 	}
