@@ -32,15 +32,20 @@ async function tryRewriteExchangeSymbol(
 	symbol: string,
 	url: URL,
 ): Promise<Response | null> {
-	if (!symbol.includes(":")) return null;
+	let candidate: string | null = null;
 
-	const [prefix, base] = symbol.split(":");
-	if (prefix.toUpperCase() !== "BIT" || !base) return null;
+	if (symbol.includes(":")) {
+		const [prefix, base] = symbol.split(":");
+		if (prefix.toUpperCase() === "BIT" && base) candidate = `${base}.MI`;
+		else return null;
+	} else if (symbol.toUpperCase().endsWith(".FR")) {
+		candidate = `${symbol.slice(0, -3)}.PA`;
+	}
 
-	const candidate = `${base}.MI`;
+	if (!candidate) return null;
+
 	try {
-		const exists = await getYahooQuote(candidate);
-		if (exists !== null) {
+		if ((await getYahooQuote(candidate)) !== null) {
 			return Response.redirect(
 				`${url.origin}/api/quotes/${encodeURIComponent(candidate)}`,
 				301,
