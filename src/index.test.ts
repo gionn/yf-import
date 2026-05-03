@@ -227,6 +227,41 @@ describe("Quotes API", () => {
 			);
 		});
 
+		it("should rewrite SYMBOL.FR to SYMBOL.PA and redirect with 301 when exists", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					chart: { result: [{ meta: { regularMarketPrice: 55.0 } }] },
+				}),
+			});
+
+			const request = new Request("http://localhost/api/quotes/AIR.FR");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe(
+				"http://localhost/api/quotes/AIR.PA",
+			);
+		});
+
+		it("should not redirect when .FR rewritten symbol has no price and return 404", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			const request = new Request("http://localhost/api/quotes/XXXX.FR");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toContain("Price not available");
+		});
+
 		it("should not redirect when rewritten symbol has no price and return 404", async () => {
 			// First call to check if rewritten symbol exists
 			(globalThis.fetch as any).mockResolvedValueOnce({
