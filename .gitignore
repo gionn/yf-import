@@ -40,3 +40,4 @@ yarn-error.log*
 # Build outputs
 *.tsbuildinfo
 .cache/
+.claude
