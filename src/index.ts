@@ -1,15 +1,20 @@
 export interface Env {
 	CACHE_TTL?: string; // Cache time-to-live in seconds
 	ROOT_REDIRECT_URL?: string; // URL to redirect root path to
+	FETCH_TIMEOUT_MS?: string; // Yahoo Finance API fetch timeout in milliseconds
 }
 
-async function getYahooQuote(symbol: string): Promise<number | null> {
+async function getYahooQuote(
+	symbol: string,
+	fetchTimeoutMs: number,
+): Promise<number | null> {
 	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
 
 	const response = await fetch(url, {
 		headers: {
 			"User-Agent": "Mozilla/5.0",
 		},
+		signal: AbortSignal.timeout(fetchTimeoutMs),
 	});
 
 	if (response.status === 404) {
@@ -31,6 +36,7 @@ async function getYahooQuote(symbol: string): Promise<number | null> {
 async function tryRewriteExchangeSymbol(
 	symbol: string,
 	url: URL,
+	fetchTimeoutMs: number,
 ): Promise<Response | null> {
 	let candidate: string | null = null;
 
@@ -45,7 +51,7 @@ async function tryRewriteExchangeSymbol(
 	if (!candidate) return null;
 
 	try {
-		if ((await getYahooQuote(candidate)) !== null) {
+		if ((await getYahooQuote(candidate, fetchTimeoutMs)) !== null) {
 			return Response.redirect(
 				`${url.origin}/api/quotes/${encodeURIComponent(candidate)}`,
 				301,
@@ -69,8 +75,14 @@ export default {
 		if (match && request.method === "GET") {
 			const symbol = match[1];
 
+			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
+
 			// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-			const rewriteRedirect = await tryRewriteExchangeSymbol(symbol, url);
+			const rewriteRedirect = await tryRewriteExchangeSymbol(
+				symbol,
+				url,
+				fetchTimeoutMs,
+			);
 			if (rewriteRedirect) return rewriteRedirect;
 
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
@@ -89,7 +101,7 @@ export default {
 
 			// Cache miss - fetch from Yahoo Finance
 			try {
-				const price = await getYahooQuote(symbol);
+				const price = await getYahooQuote(symbol, fetchTimeoutMs);
 
 				if (price === null) {
 					return new Response("Price not available", {
