@@ -50,15 +50,11 @@ async function tryRewriteExchangeSymbol(
 
 	if (!candidate) return null;
 
-	try {
-		if ((await getYahooQuote(candidate, fetchTimeoutMs)) !== null) {
-			return Response.redirect(
-				`${url.origin}/api/quotes/${encodeURIComponent(candidate)}`,
-				301,
-			);
-		}
-	} catch {
-		// ignore errors and fall through to normal handling
+	if ((await getYahooQuote(candidate, fetchTimeoutMs)) !== null) {
+		return Response.redirect(
+			`${url.origin}/api/quotes/${encodeURIComponent(candidate)}`,
+			301,
+		);
 	}
 	return null;
 }
