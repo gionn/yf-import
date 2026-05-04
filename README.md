@@ -184,6 +184,7 @@ Configure cache duration in [wrangler.toml](wrangler.toml):
 ```toml
 [vars]
 CACHE_TTL = "300"  # Cache for 5 minutes (300 seconds)
+FETCH_TIMEOUT_MS = "5000"  # Timeout for Yahoo Finance fetch in ms (default 5000)
 ```
 
 Responses are cached at Cloudflare's edge using `Cache-Control` headers. This
