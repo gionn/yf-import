@@ -62,6 +62,7 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(404);
 			expect(await response.text()).toBe("Price not available");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
 		});
 
 		it("should return 500 when Yahoo Finance API fails", async () => {
@@ -76,6 +77,7 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(500);
 			expect(await response.text()).toContain("Error fetching quote");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
 		});
 
 		it("should use custom cache TTL from environment", async () => {
