@@ -283,6 +283,92 @@ describe("Quotes API", () => {
 		});
 	});
 
+	describe("Outbound request headers and host", () => {
+		let ctx: ExecutionContext;
+
+		beforeEach(() => {
+			vi.stubGlobal("fetch", vi.fn());
+			ctx = createExecutionContext();
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
+		it("should send all expected browser-like headers", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(100),
+			});
+
+			const request = new Request("http://localhost/api/quotes/HDR_TEST");
+			await worker.fetch(request, env, ctx);
+
+			const [_url, init] = (globalThis.fetch as any).mock.calls[0];
+			const headers = init.headers as Record<string, string>;
+
+			expect(headers["User-Agent"]).toBeTruthy();
+			expect(headers["Accept"]).toBe(
+				"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			);
+			expect(headers["Accept-Language"]).toBe("en-US,en;q=0.9");
+			expect(headers["Accept-Encoding"]).toBe("gzip, deflate, br");
+			expect(headers["Referer"]).toBe("https://finance.yahoo.com/");
+			expect(headers["Origin"]).toBe("https://finance.yahoo.com");
+		});
+
+		it("should send a User-Agent from the known pool", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(100),
+			});
+
+			const request = new Request("http://localhost/api/quotes/UA_TEST");
+			await worker.fetch(request, env, ctx);
+
+			const [_url, init] = (globalThis.fetch as any).mock.calls[0];
+			const ua = (init.headers as Record<string, string>)["User-Agent"];
+
+			const knownUAs = [
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+				"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+				"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+				"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+			];
+			expect(knownUAs).toContain(ua);
+		});
+
+		it("should use query1 host when Math.random returns 0", async () => {
+			vi.spyOn(Math, "random").mockReturnValue(0);
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(100),
+			});
+
+			const request = new Request("http://localhost/api/quotes/Q1_TEST");
+			await worker.fetch(request, env, ctx);
+
+			const [url] = (globalThis.fetch as any).mock.calls[0];
+			expect(url).toContain("query1.finance.yahoo.com");
+		});
+
+		it("should use query2 host when Math.random returns 0.9", async () => {
+			vi.spyOn(Math, "random").mockReturnValue(0.9);
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(100),
+			});
+
+			const request = new Request("http://localhost/api/quotes/Q2_TEST");
+			await worker.fetch(request, env, ctx);
+
+			const [url] = (globalThis.fetch as any).mock.calls[0];
+			expect(url).toContain("query2.finance.yahoo.com");
+		});
+	});
+
 	describe("Other routes", () => {
 		it("should return 404 for unknown routes", async () => {
 			const ctx = createExecutionContext();
