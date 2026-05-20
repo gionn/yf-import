@@ -7,21 +7,8 @@ const USER_AGENTS = [
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
 ];
 
-const YAHOO_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
-
-function randomItem<T>(arr: T[]): T {
-	return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function buildYahooHeaders(): Record<string, string> {
-	return {
-		"User-Agent": randomItem(USER_AGENTS),
-		Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"Accept-Language": "en-US,en;q=0.9",
-		"Accept-Encoding": "gzip, deflate, br",
-		Referer: "https://finance.yahoo.com/",
-		Origin: "https://finance.yahoo.com",
-	};
+function randomUserAgent(): string {
+	return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
 export interface Env {
@@ -34,11 +21,12 @@ async function getYahooQuote(
 	symbol: string,
 	fetchTimeoutMs: number,
 ): Promise<number | null> {
-	const host = randomItem(YAHOO_HOSTS);
-	const url = `https://${host}/v8/finance/chart/${symbol}`;
+	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
 
 	const response = await fetch(url, {
-		headers: buildYahooHeaders(),
+		headers: {
+			"User-Agent": randomUserAgent(),
+		},
 		signal: AbortSignal.timeout(fetchTimeoutMs),
 	});
 
