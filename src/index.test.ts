@@ -337,6 +337,277 @@ describe("Quotes API", () => {
 	});
 });
 
+describe("Details API", () => {
+	describe("GET /api/details/:symbol", () => {
+		let ctx: ExecutionContext;
+
+		beforeEach(() => {
+			vi.stubGlobal("fetch", vi.fn());
+			ctx = createExecutionContext();
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
+		const detailsMeta = {
+			symbol: "VWCE.MI",
+			longName: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
+			currency: "EUR",
+			regularMarketPrice: 172.89,
+			fiftyTwoWeekHigh: 173.98,
+			fiftyTwoWeekLow: 138.2,
+		};
+
+		const metaResponse = (meta: Record<string, unknown>) => ({
+			ok: true,
+			json: async () => ({ chart: { result: [{ meta }] } }),
+		});
+
+		it("should return a single CSV row with all fields", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse(detailsMeta),
+			);
+
+			const request = new Request("http://localhost/api/details/VWCE.MI");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+			expect(await response.text()).toBe(
+				"VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2",
+			);
+			expect(response.headers.get("Cache-Control")).toContain("max-age=");
+		});
+
+		it("should fall back to shortName for description", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "XYZ",
+					shortName: "Short Name",
+					currency: "USD",
+					regularMarketPrice: 10,
+				}),
+			);
+
+			const request = new Request("http://localhost/api/details/XYZ");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe("XYZ,Short Name,USD,10,,");
+		});
+
+		it("should fall back to the symbol when no name is available", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({ currency: "USD", regularMarketPrice: 5 }),
+			);
+
+			const request = new Request("http://localhost/api/details/NONAME");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(await response.text()).toBe("NONAME,NONAME,USD,5,,");
+		});
+
+		it("should escape commas and quotes in CSV fields", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "ESC",
+					longName: 'Vanguard "Test", Fund',
+					currency: "EUR",
+					regularMarketPrice: 1,
+					fiftyTwoWeekHigh: 2,
+					fiftyTwoWeekLow: 3,
+				}),
+			);
+
+			const request = new Request("http://localhost/api/details/ESC");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(await response.text()).toBe(
+				'ESC,"Vanguard ""Test"", Fund",EUR,1,2,3',
+			);
+		});
+
+		it("should return JSON when format=json is requested", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse(detailsMeta),
+			);
+
+			const request = new Request(
+				"http://localhost/api/details/VWCE.MI?format=json",
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(JSON.parse(await response.text())).toEqual({
+				symbol: "VWCE.MI",
+				description: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
+				currency: "EUR",
+				price: 172.89,
+				fiftyTwoWeekHigh: 173.98,
+				fiftyTwoWeekLow: 138.2,
+			});
+		});
+
+		it("should return JSON when Accept: application/json is sent", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "ACCEPT",
+					longName: "Accepted",
+					currency: "USD",
+					regularMarketPrice: 1,
+				}),
+			);
+
+			const request = new Request("http://localhost/api/details/ACCEPT", {
+				headers: { Accept: "application/json" },
+			});
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			const body = JSON.parse(await response.text());
+			expect(body.symbol).toBe("ACCEPT");
+			expect(body.fiftyTwoWeekHigh).toBeNull();
+			expect(body.fiftyTwoWeekLow).toBeNull();
+		});
+
+		it("should return 404 when the symbol is not found", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			const request = new Request("http://localhost/api/details/INVALID");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Symbol not found");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
+		});
+
+		it("should return a JSON error when the symbol is not found in JSON mode", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 404,
+			});
+
+			const request = new Request(
+				"http://localhost/api/details/INVALIDJSON?format=json",
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(JSON.parse(await response.text())).toEqual({
+				error: "Symbol not found",
+			});
+		});
+
+		it("should return 500 when the Yahoo Finance API fails", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request("http://localhost/api/details/FAIL500");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(await response.text()).toContain("Error fetching details");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
+		});
+
+		it("should only respond to GET requests", async () => {
+			const request = new Request("http://localhost/api/details/AAPL", {
+				method: "POST",
+			});
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Not Found");
+		});
+
+		it("should rewrite BIT:VWCE to VWCE.MI and redirect with 301", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({ regularMarketPrice: 123.45 }),
+			);
+
+			const request = new Request("http://localhost/api/details/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe(
+				"http://localhost/api/details/VWCE.MI",
+			);
+		});
+
+		it("should serve cached responses on cache hit", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "CACHED",
+					longName: "Cached Fund",
+					currency: "EUR",
+					regularMarketPrice: 42,
+				}),
+			);
+
+			const request1 = new Request("http://localhost/api/details/CACHED");
+			const response1 = await worker.fetch(request1, env, ctx);
+			expect(response1.status).toBe(200);
+			expect(await response1.text()).toBe("CACHED,Cached Fund,EUR,42,,");
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+
+			const request2 = new Request("http://localhost/api/details/CACHED");
+			const response2 = await worker.fetch(request2, env, ctx);
+			expect(response2.status).toBe(200);
+			expect(await response2.text()).toBe("CACHED,Cached Fund,EUR,42,,");
+			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+		});
+
+		it("should cache CSV and JSON independently", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "BOTH",
+					longName: "Both Formats",
+					currency: "EUR",
+					regularMarketPrice: 7,
+				}),
+			);
+
+			// CSV request (cache miss)
+			const csvResponse = await worker.fetch(
+				new Request("http://localhost/api/details/BOTH"),
+				env,
+				ctx,
+			);
+			expect(csvResponse.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+
+			// JSON request (separate cache key, cache miss)
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "BOTH",
+					longName: "Both Formats",
+					currency: "EUR",
+					regularMarketPrice: 7,
+				}),
+			);
+			const jsonResponse = await worker.fetch(
+				new Request("http://localhost/api/details/BOTH?format=json"),
+				env,
+				ctx,
+			);
+			expect(jsonResponse.headers.get("Content-Type")).toBe("application/json");
+			expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+		});
+	});
+});
+
 describe("Integration Tests", () => {
 	describe("Real Yahoo Finance API", () => {
 		it("should fetch real quote for VWCE.MI", { timeout: 10000 }, async () => {
@@ -355,5 +626,28 @@ describe("Integration Tests", () => {
 			expect(response.headers.get("Content-Type")).toBe("text/plain");
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
 		});
+
+		it(
+			"should fetch real details for VWCE.MI",
+			{ timeout: 10000 },
+			async () => {
+				const ctx = createExecutionContext();
+
+				const request = new Request("http://localhost/api/details/VWCE.MI");
+				const response = await worker.fetch(request, env, ctx);
+
+				expect(response.status).toBe(200);
+				expect(response.headers.get("Content-Type")).toBe(
+					"text/csv; charset=utf-8",
+				);
+
+				const fields = (await response.text()).split(",");
+				expect(fields).toHaveLength(6);
+				expect(fields[0]).toBe("VWCE.MI");
+				expect(fields[1]).toContain("Vanguard");
+				expect(fields[2]).toBe("EUR");
+				expect(Number.parseFloat(fields[3])).toBeGreaterThan(0);
+			},
+		);
 	});
 });
