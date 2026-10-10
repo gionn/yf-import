@@ -285,6 +285,114 @@ describe("Quotes API", () => {
 		});
 	});
 
+	describe("CORS", () => {
+		let ctx: ExecutionContext;
+
+		const corsEnv = {
+			ALLOWED_ORIGINS: "https://app.example.com,https://sheets.example.org",
+		};
+
+		beforeEach(() => {
+			vi.stubGlobal("fetch", vi.fn());
+			ctx = createExecutionContext();
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
+		it("should echo an allowed origin and set Vary: Origin", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(150.25),
+			});
+
+			const request = new Request("http://localhost/api/quotes/CORSALLOW", {
+				headers: { Origin: "https://app.example.com" },
+			});
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			expect(response.headers.get("Vary")).toBe("Origin");
+		});
+
+		it("should not send CORS headers for a disallowed origin", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(150.25),
+			});
+
+			const request = new Request("http://localhost/api/quotes/CORSDENY", {
+				headers: { Origin: "https://evil.example.com" },
+			});
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+		});
+
+		it("should serve requests without an Origin header without CORS headers", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(99.5),
+			});
+
+			const request = new Request("http://localhost/api/quotes/CORSPLAIN");
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe("99.5");
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+		});
+
+		it("should handle OPTIONS preflight for an allowed origin", async () => {
+			const request = new Request("http://localhost/api/quotes/AAPL", {
+				method: "OPTIONS",
+				headers: { Origin: "https://app.example.com" },
+			});
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(204);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+				"GET, OPTIONS",
+			);
+		});
+
+		it("should reflect the requesting origin on a cache hit", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(42.42),
+			});
+
+			// First request (cache miss) from one allowed origin
+			const request1 = new Request("http://localhost/api/quotes/CORSCACHE", {
+				headers: { Origin: "https://app.example.com" },
+			});
+			const response1 = await worker.fetch(request1, corsEnv, ctx);
+			expect(response1.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			await response1.text();
+
+			// Second request (cache hit) from a different allowed origin
+			const request2 = new Request("http://localhost/api/quotes/CORSCACHE", {
+				headers: { Origin: "https://sheets.example.org" },
+			});
+			const response2 = await worker.fetch(request2, corsEnv, ctx);
+			expect(response2.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://sheets.example.org",
+			);
+			// Cached response is origin-agnostic: Yahoo is only called once
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+		});
+	});
+
 	describe("Other routes", () => {
 		it("should return 404 for unknown routes", async () => {
 			const ctx = createExecutionContext();

@@ -208,6 +208,32 @@ When a user visits the root URL of the worker (e.g.,
 redirected to the specified URL. This is useful for directing users to
 documentation, a homepage, or any relevant resource.
 
+### Allowed origins (CORS)
+
+By default the worker does not send any CORS headers, so browser JavaScript
+from other sites cannot read the responses. To let specific websites fetch the
+API directly from the browser, list their exact origins (comma-separated):
+
+```toml
+[vars]
+ALLOWED_ORIGINS = "https://app.example.com,https://sheets.example.org"
+```
+
+When a request carries an `Origin` header, the worker echoes that origin in
+`Access-Control-Allow-Origin` **only if it exactly matches** an entry in the
+list, and adds `Vary: Origin` so caches stay correct. Requests from any other
+origin still succeed but receive no CORS header, which makes the browser block
+JavaScript from reading the response.
+
+The configured list is never disclosed to callers — only the caller's own
+origin is ever echoed back, and only when it matches. Leave `ALLOWED_ORIGINS`
+empty to disable CORS entirely.
+
+> **Note:** CORS only restricts which browser pages can *read* the response. It
+> is not access control: tools such as `curl`, server-side scripts, and Google
+> Sheets `IMPORTDATA` never send an `Origin` header, so they are unaffected and
+> will keep working regardless of this setting.
+
 ## How It Works
 
 The worker makes requests to Yahoo Finance's public quote API and returns the `regularMarketPrice` field. It uses Cloudflare's edge runtime with the standard `fetch` API, making it fast and efficient.

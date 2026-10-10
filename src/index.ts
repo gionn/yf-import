@@ -15,6 +15,45 @@ export interface Env {
 	CACHE_TTL?: string; // Cache time-to-live in seconds
 	ROOT_REDIRECT_URL?: string; // URL to redirect root path to
 	FETCH_TIMEOUT_MS?: string; // Yahoo Finance API fetch timeout in milliseconds
+	ALLOWED_ORIGINS?: string; // Comma-separated list of origins allowed for CORS
+}
+
+/**
+ * Returns the request origin if it is present in the configured allowlist,
+ * otherwise null. Only the caller's own origin is ever echoed back, so the
+ * configured list is never disclosed.
+ */
+function getAllowedOrigin(
+	requestOrigin: string | null,
+	env: Env,
+): string | null {
+	if (!requestOrigin) return null;
+
+	const allowedOrigins = (env.ALLOWED_ORIGINS || "")
+		.split(",")
+		.map((origin) => origin.trim())
+		.filter(Boolean);
+
+	return allowedOrigins.includes(requestOrigin) ? requestOrigin : null;
+}
+
+/**
+ * Adds CORS headers to a response when the request origin is allowed.
+ * The response is cloned because cached and redirect responses have
+ * immutable headers.
+ */
+function withCors(response: Response, allowedOrigin: string | null): Response {
+	if (!allowedOrigin) return response;
+
+	const headers = new Headers(response.headers);
+	headers.set("Access-Control-Allow-Origin", allowedOrigin);
+	headers.set("Vary", "Origin");
+
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
 }
 
 async function getYahooQuote(
@@ -81,7 +120,24 @@ export default {
 		const url = new URL(request.url);
 
 		const match = url.pathname.match(/^\/api\/quotes\/([^/]+)$/);
-		if (match && request.method === "GET") {
+		if (match && (request.method === "GET" || request.method === "OPTIONS")) {
+			const allowedOrigin = getAllowedOrigin(
+				request.headers.get("Origin"),
+				env,
+			);
+
+			// Handle CORS preflight requests
+			if (request.method === "OPTIONS") {
+				const headers = new Headers({
+					"Access-Control-Allow-Methods": "GET, OPTIONS",
+				});
+				if (allowedOrigin) {
+					headers.set("Access-Control-Allow-Origin", allowedOrigin);
+					headers.set("Vary", "Origin");
+				}
+				return new Response(null, { status: 204, headers });
+			}
+
 			const symbol = match[1];
 
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
@@ -92,12 +148,16 @@ export default {
 				url,
 				fetchTimeoutMs,
 			);
-			if (rewriteRedirect) return rewriteRedirect;
+			if (rewriteRedirect) return withCors(rewriteRedirect, allowedOrigin);
 
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
-			// Create cache key from the request URL
-			const cacheKey = new Request(`${url.origin}${url.pathname}`, request);
+			// Create cache key from the request URL (query params and headers
+			// such as Origin are stripped so the cached entry is shared across
+			// all allowed origins)
+			const cacheKey = new Request(`${url.origin}${url.pathname}`, {
+				method: request.method,
+			});
 			const cache = caches.default;
 
 			// Check if we have a cached response
@@ -105,7 +165,7 @@ export default {
 
 			if (response) {
 				// Return cached response
-				return response;
+				return withCors(response, allowedOrigin);
 			}
 
 			// Cache miss - fetch from Yahoo Finance
@@ -113,13 +173,16 @@ export default {
 				const price = await getYahooQuote(symbol, fetchTimeoutMs);
 
 				if (price === null) {
-					return new Response("Price not available", {
-						status: 404,
-						headers: {
-							"Content-Type": "text/plain",
-							"Cache-Control": "no-store",
-						},
-					});
+					return withCors(
+						new Response("Price not available", {
+							status: 404,
+							headers: {
+								"Content-Type": "text/plain",
+								"Cache-Control": "no-store",
+							},
+						}),
+						allowedOrigin,
+					);
 				}
 
 				response = new Response(price.toString(), {
@@ -130,21 +193,26 @@ export default {
 					},
 				});
 
-				// Store the response in cache
+				// Store the plain response in cache (without CORS headers, so a
+				// single entry serves every allowed origin). CORS headers are
+				// added per-request on the way out.
 				// Clone the response before caching since response body can only be read once
 				ctx.waitUntil(cache.put(cacheKey, response.clone()));
 
-				return response;
+				return withCors(response, allowedOrigin);
 			} catch (error) {
-				return new Response(
-					`Error fetching quote: ${error instanceof Error ? error.message : "Unknown error"}`,
-					{
-						status: 500,
-						headers: {
-							"Content-Type": "text/plain",
-							"Cache-Control": "no-store",
+				return withCors(
+					new Response(
+						`Error fetching quote: ${error instanceof Error ? error.message : "Unknown error"}`,
+						{
+							status: 500,
+							headers: {
+								"Content-Type": "text/plain",
+								"Cache-Control": "no-store",
+							},
 						},
-					},
+					),
+					allowedOrigin,
 				);
 			}
 		}
