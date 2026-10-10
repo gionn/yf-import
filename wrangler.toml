@@ -8,7 +8,7 @@ CACHE_TTL = "3600" # 1 hour
 ROOT_REDIRECT_URL = "https://gionn.net/2026/google-sheets-yahoo-finance-fix/"
 # Comma-separated list of exact origins allowed to read API responses
 # cross-origin (CORS), e.g. "https://app.example.com,https://sheets.example.org".
-# Leave empty to disable CORS entirely. The list is never disclosed to callers:
+# Set an empty string to disable CORS. The list is never disclosed to callers:
 # only the caller's own origin is echoed back, and only when it matches.
 ALLOWED_ORIGINS = "http://localhost:5173"
 

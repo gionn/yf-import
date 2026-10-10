@@ -210,29 +210,24 @@ documentation, a homepage, or any relevant resource.
 
 ### Allowed origins (CORS)
 
-By default the worker does not send any CORS headers, so browser JavaScript
-from other sites cannot read the responses. To let specific websites fetch the
-API directly from the browser, list their exact origins (comma-separated):
+Set the websites allowed to read responses from the browser as a comma-separated
+list of exact origins in `[vars]` (empty disables CORS):
 
 ```toml
 [vars]
 ALLOWED_ORIGINS = "https://app.example.com,https://sheets.example.org"
 ```
 
-When a request carries an `Origin` header, the worker echoes that origin in
-`Access-Control-Allow-Origin` **only if it exactly matches** an entry in the
-list, and adds `Vary: Origin` so caches stay correct. Requests from any other
-origin still succeed but receive no CORS header, which makes the browser block
-JavaScript from reading the response.
+A request's `Origin` is echoed in `Access-Control-Allow-Origin` only on an exact
+match; other origins still get the data but no header, so the browser blocks it.
+`Vary: Origin` is always sent so caches stay correct, and `OPTIONS` preflights
+from allowed origins return `204` with the requested methods and headers.
 
-The configured list is never disclosed to callers — only the caller's own
-origin is ever echoed back, and only when it matches. Leave `ALLOWED_ORIGINS`
-empty to disable CORS entirely.
+The list is never disclosed — only the caller's own origin is echoed back.
 
-> **Note:** CORS only restricts which browser pages can *read* the response. It
-> is not access control: tools such as `curl`, server-side scripts, and Google
-> Sheets `IMPORTDATA` never send an `Origin` header, so they are unaffected and
-> will keep working regardless of this setting.
+> **Note:** CORS only controls which browser pages can *read* a response, not who
+> can call the API. `curl`, server scripts, and Google Sheets `IMPORTDATA` send no
+> `Origin`, so they are unaffected.
 
 ## How It Works
 

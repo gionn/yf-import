@@ -25,7 +25,7 @@ Single-file Cloudflare Worker (`src/index.ts`) behind the `yf-import` service na
   - `SYMBOL.FR` → probes `SYMBOL.PA`, redirects 301 if it exists
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
-- **CORS**: The quote route echoes a request's `Origin` in `Access-Control-Allow-Origin` (plus `Vary: Origin`) only when it exactly matches a comma-separated entry in `ALLOWED_ORIGINS`. The allowlist is never disclosed; disallowed/absent origins get no CORS header. CORS headers are applied per-request after cache lookup, so the cached body stays origin-agnostic. `OPTIONS` preflight returns 204.
+- **CORS**: The quote route echoes a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always sends `Vary: Origin`. The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers.
 - **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
 
 ## Testing

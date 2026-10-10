@@ -369,6 +369,27 @@ describe("Quotes API", () => {
 			expect(response.headers.get("Vary")).toBe("Origin");
 		});
 
+		it("should permit requested custom headers on preflight for an allowed origin", async () => {
+			const request = new Request("http://localhost/api/quotes/AAPL", {
+				method: "OPTIONS",
+				headers: {
+					Origin: "https://app.example.com",
+					"Access-Control-Request-Method": "GET",
+					"Access-Control-Request-Headers": "Authorization, X-Custom",
+				},
+			});
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(204);
+			expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+				"Authorization, X-Custom",
+			);
+			expect(response.headers.get("Vary")).toContain("Origin");
+			expect(response.headers.get("Vary")).toContain(
+				"Access-Control-Request-Headers",
+			);
+		});
+
 		it("should wrap rewrite probe failures with CORS headers", async () => {
 			// Upstream error while probing the rewritten symbol throws before
 			// falling through; the 500 must still carry CORS headers.

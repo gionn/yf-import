@@ -19,9 +19,8 @@ export interface Env {
 }
 
 /**
- * Returns the request origin if it is present in the configured allowlist,
- * otherwise null. Only the caller's own origin is ever echoed back, so the
- * configured list is never disclosed.
+ * Returns the request origin if present in ALLOWED_ORIGINS, else null. Only the
+ * caller's own origin is echoed, so the list is never disclosed.
  */
 function getAllowedOrigin(
 	requestOrigin: string | null,
@@ -38,12 +37,9 @@ function getAllowedOrigin(
 }
 
 /**
- * Applies CORS headers to a response. `Vary: Origin` is always emitted because
- * the response representation depends on the request's Origin, so downstream
- * caches must not reuse one origin's response for another. The
- * `Access-Control-Allow-Origin` header is only added when the request origin
- * matched the allowlist. The response is cloned because cached and redirect
- * responses have immutable headers.
+ * Adds CORS headers, cloning the response (cached/redirect responses have
+ * immutable headers). `Vary: Origin` is always set so caches never reuse one
+ * origin's response for another; `Access-Control-Allow-Origin` only on a match.
  */
 function withCors(response: Response, allowedOrigin: string | null): Response {
 	const headers = new Headers(response.headers);
@@ -137,6 +133,16 @@ export default {
 				});
 				if (allowedOrigin) {
 					headers.set("Access-Control-Allow-Origin", allowedOrigin);
+
+					// The endpoint is public, so accept any requested headers;
+					// the origin allowlist is the real gate.
+					const requestedHeaders = request.headers.get(
+						"Access-Control-Request-Headers",
+					);
+					if (requestedHeaders) {
+						headers.set("Access-Control-Allow-Headers", requestedHeaders);
+						headers.append("Vary", "Access-Control-Request-Headers");
+					}
 				}
 				return new Response(null, { status: 204, headers });
 			}
@@ -146,17 +152,15 @@ export default {
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
-			// Create cache key from the request URL (query params and headers
-			// such as Origin are stripped so the cached entry is shared across
-			// all allowed origins)
+			// Strip query params and headers (e.g. Origin) so one cache entry
+			// serves every allowed origin
 			const cacheKey = new Request(`${url.origin}${url.pathname}`, {
 				method: request.method,
 			});
 			const cache = caches.default;
 
-			// The rewrite probe and the quote fetch can both throw (e.g. on a
-			// Yahoo Finance 500 or timeout), so both are protected here to
-			// guarantee the error response still carries CORS headers.
+			// The rewrite probe and quote fetch can both throw (Yahoo 500 or
+			// timeout); protect both so errors still carry CORS headers.
 			try {
 				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
 				const rewriteRedirect = await tryRewriteExchangeSymbol(
@@ -198,10 +202,8 @@ export default {
 					},
 				});
 
-				// Store the plain response in cache (without CORS headers, so a
-				// single entry serves every allowed origin). CORS headers are
-				// added per-request on the way out.
-				// Clone the response before caching since response body can only be read once
+				// Cache the plain response (CORS is added per request). Clone
+				// it first: a response body can only be read once.
 				ctx.waitUntil(cache.put(cacheKey, response.clone()));
 
 				return withCors(response, allowedOrigin);
