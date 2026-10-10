@@ -28,7 +28,7 @@ Single-file Cloudflare Worker (`src/index.ts`) behind the `yf-import` service na
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
   - The redirect targets the same route family (`/api/quotes` or `/api/details`)
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
-- **CORS**: The quote route echoes a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always sends `Vary: Origin`. The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers.
+- **CORS**: Both routes echo a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always send `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors.
 - **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
 
 ## Testing

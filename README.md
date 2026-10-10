@@ -262,7 +262,9 @@ ALLOWED_ORIGINS = "https://app.example.com,https://sheets.example.org"
 A request's `Origin` is echoed in `Access-Control-Allow-Origin` only on an exact
 match; other origins still get the data but no header, so the browser blocks it.
 `Vary: Origin` is always sent so caches stay correct, and `OPTIONS` preflights
-from allowed origins return `204` with the requested methods and headers.
+from allowed origins return `204` with the requested methods and headers. This
+applies to both `/api/quotes` and `/api/details`; the details response varies on
+both `Accept` and `Origin`.
 
 The list is never disclosed — only the caller's own origin is echoed back.
 

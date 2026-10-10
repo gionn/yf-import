@@ -37,13 +37,26 @@ function getAllowedOrigin(
 }
 
 /**
+ * Merges a token into an existing `Vary` header value without duplicating it.
+ */
+function appendVary(current: string | null, value: string): string {
+	const values = (current || "")
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+	if (!values.includes(value)) values.push(value);
+	return values.join(", ");
+}
+
+/**
  * Adds CORS headers, cloning the response (cached/redirect responses have
- * immutable headers). `Vary: Origin` is always set so caches never reuse one
- * origin's response for another; `Access-Control-Allow-Origin` only on a match.
+ * immutable headers). `Vary: Origin` is always set (merged with any existing
+ * `Vary` values, e.g. `Accept`) so caches never reuse one origin's response for
+ * another; `Access-Control-Allow-Origin` is set only on a match.
  */
 function withCors(response: Response, allowedOrigin: string | null): Response {
 	const headers = new Headers(response.headers);
-	headers.set("Vary", "Origin");
+	headers.set("Vary", appendVary(headers.get("Vary"), "Origin"));
 	if (allowedOrigin) {
 		headers.set("Access-Control-Allow-Origin", allowedOrigin);
 	}
@@ -53,6 +66,104 @@ function withCors(response: Response, allowedOrigin: string | null): Response {
 		statusText: response.statusText,
 		headers,
 	});
+}
+
+/**
+ * Builds a CORS preflight (OPTIONS) response. The endpoints are public, so any
+ * requested headers are accepted; the origin allowlist is the real gate.
+ */
+function corsPreflightResponse(
+	request: Request,
+	allowedOrigin: string | null,
+): Response {
+	const headers = new Headers({
+		"Access-Control-Allow-Methods": "GET, OPTIONS",
+		Vary: "Origin",
+	});
+	if (allowedOrigin) {
+		headers.set("Access-Control-Allow-Origin", allowedOrigin);
+
+		const requestedHeaders = request.headers.get(
+			"Access-Control-Request-Headers",
+		);
+		if (requestedHeaders) {
+			headers.set("Access-Control-Allow-Headers", requestedHeaders);
+			headers.append("Vary", "Access-Control-Request-Headers");
+		}
+	}
+	return new Response(null, { status: 204, headers });
+}
+
+/**
+ * Resolves the CORS origin for a request and, for OPTIONS requests, the ready
+ * preflight response. Shared by every route so CORS behaves identically.
+ */
+function resolveCors(
+	request: Request,
+	env: Env,
+): { allowedOrigin: string | null; preflight: Response | null } {
+	const allowedOrigin = getAllowedOrigin(request.headers.get("Origin"), env);
+	const preflight =
+		request.method === "OPTIONS"
+			? corsPreflightResponse(request, allowedOrigin)
+			: null;
+
+	return { allowedOrigin, preflight };
+}
+
+/**
+ * Runs a route handler, wrapping any thrown error in a `500 no-store` response
+ * and adding CORS headers to every outcome (including errors).
+ */
+async function corsGuarded(
+	handler: () => Promise<Response>,
+	allowedOrigin: string | null,
+	errorLabel: string,
+): Promise<Response> {
+	try {
+		return withCors(await handler(), allowedOrigin);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Unknown error";
+		return withCors(
+			noStoreResponse(`Error fetching ${errorLabel}: ${message}`, 500),
+			allowedOrigin,
+		);
+	}
+}
+
+/**
+ * A non-cacheable response (errors, not-found) with the given content type.
+ */
+function noStoreResponse(
+	body: string,
+	status: number,
+	contentType = "text/plain",
+): Response {
+	return new Response(body, {
+		status,
+		headers: {
+			"Content-Type": contentType,
+			"Cache-Control": "no-store",
+		},
+	});
+}
+
+/**
+ * A publicly cacheable `200` response, optionally varying on a header.
+ */
+function cacheableResponse(
+	body: string,
+	contentType: string,
+	cacheTTL: number,
+	vary?: string,
+): Response {
+	const headers = new Headers({
+		"Content-Type": contentType,
+		"Cache-Control": `public, max-age=${cacheTTL}`,
+	});
+	if (vary) headers.set("Vary", vary);
+
+	return new Response(body, { status: 200, headers });
 }
 
 interface YahooMeta {
@@ -182,195 +293,128 @@ export default {
 			quotesMatch &&
 			(request.method === "GET" || request.method === "OPTIONS")
 		) {
-			const allowedOrigin = getAllowedOrigin(
-				request.headers.get("Origin"),
-				env,
-			);
-
-			// Handle CORS preflight requests
-			if (request.method === "OPTIONS") {
-				const headers = new Headers({
-					"Access-Control-Allow-Methods": "GET, OPTIONS",
-					Vary: "Origin",
-				});
-				if (allowedOrigin) {
-					headers.set("Access-Control-Allow-Origin", allowedOrigin);
-
-					// The endpoint is public, so accept any requested headers;
-					// the origin allowlist is the real gate.
-					const requestedHeaders = request.headers.get(
-						"Access-Control-Request-Headers",
-					);
-					if (requestedHeaders) {
-						headers.set("Access-Control-Allow-Headers", requestedHeaders);
-						headers.append("Vary", "Access-Control-Request-Headers");
-					}
-				}
-				return new Response(null, { status: 204, headers });
-			}
+			const { allowedOrigin, preflight } = resolveCors(request, env);
+			if (preflight) return preflight;
 
 			const symbol = quotesMatch[1];
-
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
 			// Strip query params and headers (e.g. Origin) so one cache entry
 			// serves every allowed origin
 			const cacheKey = new Request(`${url.origin}${url.pathname}`, {
-				method: request.method,
+				method: "GET",
 			});
 			const cache = caches.default;
 
-			// The rewrite probe and quote fetch can both throw (Yahoo 500 or
-			// timeout); protect both so errors still carry CORS headers.
-			try {
-				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-				const rewriteRedirect = await tryRewriteExchangeSymbol(
-					symbol,
-					url,
-					fetchTimeoutMs,
-				);
-				if (rewriteRedirect) return withCors(rewriteRedirect, allowedOrigin);
-
-				// Check if we have a cached response
-				const cached = await cache.match(cacheKey);
-				if (cached) {
-					// Return cached response
-					return withCors(cached, allowedOrigin);
-				}
-
-				// Cache miss - fetch from Yahoo Finance
-				const meta = await getYahooMeta(symbol, fetchTimeoutMs);
-				const price = meta?.regularMarketPrice ?? null;
-
-				if (price === null) {
-					return withCors(
-						new Response("Price not available", {
-							status: 404,
-							headers: {
-								"Content-Type": "text/plain",
-								"Cache-Control": "no-store",
-							},
-						}),
-						allowedOrigin,
+			return corsGuarded(
+				async () => {
+					// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+					const rewriteRedirect = await tryRewriteExchangeSymbol(
+						symbol,
+						url,
+						fetchTimeoutMs,
 					);
-				}
+					if (rewriteRedirect) return rewriteRedirect;
 
-				const response = new Response(price.toString(), {
-					status: 200,
-					headers: {
-						"Content-Type": "text/plain",
-						"Cache-Control": `public, max-age=${cacheTTL}`,
-					},
-				});
+					// Check if we have a cached response
+					const cached = await cache.match(cacheKey);
+					if (cached) return cached;
 
-				// Cache the plain response (CORS is added per request). Clone
-				// it first: a response body can only be read once.
-				ctx.waitUntil(cache.put(cacheKey, response.clone()));
+					// Cache miss - fetch from Yahoo Finance
+					const meta = await getYahooMeta(symbol, fetchTimeoutMs);
+					const price = meta?.regularMarketPrice ?? null;
+					if (price === null) {
+						return noStoreResponse("Price not available", 404);
+					}
 
-				return withCors(response, allowedOrigin);
-			} catch (error) {
-				return withCors(
-					new Response(
-						`Error fetching quote: ${error instanceof Error ? error.message : "Unknown error"}`,
-						{
-							status: 500,
-							headers: {
-								"Content-Type": "text/plain",
-								"Cache-Control": "no-store",
-							},
-						},
-					),
-					allowedOrigin,
-				);
-			}
+					const response = cacheableResponse(
+						price.toString(),
+						"text/plain",
+						cacheTTL,
+					);
+
+					// Cache the plain response (CORS is added per request).
+					// Clone it first: a response body can only be read once.
+					ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+					return response;
+				},
+				allowedOrigin,
+				"quote",
+			);
 		}
 
 		const detailsMatch = url.pathname.match(/^\/api\/details\/([^/]+)$/);
-		if (detailsMatch && request.method === "GET") {
-			const symbol = detailsMatch[1];
+		if (
+			detailsMatch &&
+			(request.method === "GET" || request.method === "OPTIONS")
+		) {
+			const { allowedOrigin, preflight } = resolveCors(request, env);
+			if (preflight) return preflight;
 
+			const symbol = detailsMatch[1];
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 			const format = resolveFormat(request, url);
+			const contentType =
+				format === "json" ? "application/json" : "text/csv; charset=utf-8";
 
 			// Include the format in the cache key so CSV and JSON don't collide
 			const cacheKey = new Request(
 				`${url.origin}${url.pathname}?format=${format}`,
-				{
-					method: "GET",
-				},
+				{ method: "GET" },
 			);
 			const cache = caches.default;
 
-			const contentType =
-				format === "json" ? "application/json" : "text/csv; charset=utf-8";
-
-			try {
-				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-				const rewriteRedirect = await tryRewriteExchangeSymbol(
-					symbol,
-					url,
-					fetchTimeoutMs,
-					"/api/details",
-				);
-				if (rewriteRedirect) return rewriteRedirect;
-
-				// Check if we have a cached response
-				const cached = await cache.match(cacheKey);
-				if (cached) {
-					// Return cached response
-					return cached;
-				}
-
-				// Cache miss - fetch from Yahoo Finance
-				const meta = await getYahooMeta(symbol, fetchTimeoutMs);
-
-				if (meta === null) {
-					return new Response(
-						format === "json"
-							? JSON.stringify({ error: "Symbol not found" })
-							: "Symbol not found",
-						{
-							status: 404,
-							headers: {
-								"Content-Type": contentType,
-								"Cache-Control": "no-store",
-							},
-						},
+			return corsGuarded(
+				async () => {
+					// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+					const rewriteRedirect = await tryRewriteExchangeSymbol(
+						symbol,
+						url,
+						fetchTimeoutMs,
+						"/api/details",
 					);
-				}
+					if (rewriteRedirect) return rewriteRedirect;
 
-				const body =
-					format === "json"
-						? JSON.stringify(buildDetails(meta, symbol))
-						: detailsToCsv(meta, symbol);
+					// Check if we have a cached response
+					const cached = await cache.match(cacheKey);
+					if (cached) return cached;
 
-				const response = new Response(body, {
-					status: 200,
-					headers: {
-						"Content-Type": contentType,
-						"Cache-Control": `public, max-age=${cacheTTL}`,
-						Vary: "Accept",
-					},
-				});
+					// Cache miss - fetch from Yahoo Finance
+					const meta = await getYahooMeta(symbol, fetchTimeoutMs);
+					if (meta === null) {
+						return noStoreResponse(
+							format === "json"
+								? JSON.stringify({ error: "Symbol not found" })
+								: "Symbol not found",
+							404,
+							contentType,
+						);
+					}
 
-				// Store the response in cache
-				ctx.waitUntil(cache.put(cacheKey, response.clone()));
+					const body =
+						format === "json"
+							? JSON.stringify(buildDetails(meta, symbol))
+							: detailsToCsv(meta, symbol);
 
-				return response;
-			} catch (error) {
-				return new Response(
-					`Error fetching details: ${error instanceof Error ? error.message : "Unknown error"}`,
-					{
-						status: 500,
-						headers: {
-							"Content-Type": "text/plain",
-							"Cache-Control": "no-store",
-						},
-					},
-				);
-			}
+					// Vary on Accept: the format is content-negotiated.
+					const response = cacheableResponse(
+						body,
+						contentType,
+						cacheTTL,
+						"Accept",
+					);
+
+					// Cache the plain response (CORS is added per request).
+					ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+					return response;
+				},
+				allowedOrigin,
+				"details",
+			);
 		}
 
 		// Handle root path redirect
