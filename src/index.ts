@@ -38,16 +38,19 @@ function getAllowedOrigin(
 }
 
 /**
- * Adds CORS headers to a response when the request origin is allowed.
- * The response is cloned because cached and redirect responses have
- * immutable headers.
+ * Applies CORS headers to a response. `Vary: Origin` is always emitted because
+ * the response representation depends on the request's Origin, so downstream
+ * caches must not reuse one origin's response for another. The
+ * `Access-Control-Allow-Origin` header is only added when the request origin
+ * matched the allowlist. The response is cloned because cached and redirect
+ * responses have immutable headers.
  */
 function withCors(response: Response, allowedOrigin: string | null): Response {
-	if (!allowedOrigin) return response;
-
 	const headers = new Headers(response.headers);
-	headers.set("Access-Control-Allow-Origin", allowedOrigin);
 	headers.set("Vary", "Origin");
+	if (allowedOrigin) {
+		headers.set("Access-Control-Allow-Origin", allowedOrigin);
+	}
 
 	return new Response(response.body, {
 		status: response.status,
@@ -130,10 +133,10 @@ export default {
 			if (request.method === "OPTIONS") {
 				const headers = new Headers({
 					"Access-Control-Allow-Methods": "GET, OPTIONS",
+					Vary: "Origin",
 				});
 				if (allowedOrigin) {
 					headers.set("Access-Control-Allow-Origin", allowedOrigin);
-					headers.set("Vary", "Origin");
 				}
 				return new Response(null, { status: 204, headers });
 			}
@@ -141,15 +144,6 @@ export default {
 			const symbol = match[1];
 
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
-
-			// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-			const rewriteRedirect = await tryRewriteExchangeSymbol(
-				symbol,
-				url,
-				fetchTimeoutMs,
-			);
-			if (rewriteRedirect) return withCors(rewriteRedirect, allowedOrigin);
-
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
 			// Create cache key from the request URL (query params and headers
@@ -160,16 +154,27 @@ export default {
 			});
 			const cache = caches.default;
 
-			// Check if we have a cached response
-			let response = await cache.match(cacheKey);
-
-			if (response) {
-				// Return cached response
-				return withCors(response, allowedOrigin);
-			}
-
-			// Cache miss - fetch from Yahoo Finance
+			// The rewrite probe and the quote fetch can both throw (e.g. on a
+			// Yahoo Finance 500 or timeout), so both are protected here to
+			// guarantee the error response still carries CORS headers.
 			try {
+				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+				const rewriteRedirect = await tryRewriteExchangeSymbol(
+					symbol,
+					url,
+					fetchTimeoutMs,
+				);
+				if (rewriteRedirect) return withCors(rewriteRedirect, allowedOrigin);
+
+				// Check if we have a cached response
+				let response = await cache.match(cacheKey);
+
+				if (response) {
+					// Return cached response
+					return withCors(response, allowedOrigin);
+				}
+
+				// Cache miss - fetch from Yahoo Finance
 				const price = await getYahooQuote(symbol, fetchTimeoutMs);
 
 				if (price === null) {

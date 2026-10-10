@@ -332,6 +332,9 @@ describe("Quotes API", () => {
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+			// Vary is emitted even when not allowed so shared caches do not
+			// reuse this response for an allowlisted origin
+			expect(response.headers.get("Vary")).toBe("Origin");
 		});
 
 		it("should serve requests without an Origin header without CORS headers", async () => {
@@ -346,6 +349,7 @@ describe("Quotes API", () => {
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe("99.5");
 			expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+			expect(response.headers.get("Vary")).toBe("Origin");
 		});
 
 		it("should handle OPTIONS preflight for an allowed origin", async () => {
@@ -362,6 +366,27 @@ describe("Quotes API", () => {
 			expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
 				"GET, OPTIONS",
 			);
+			expect(response.headers.get("Vary")).toBe("Origin");
+		});
+
+		it("should wrap rewrite probe failures with CORS headers", async () => {
+			// Upstream error while probing the rewritten symbol throws before
+			// falling through; the 500 must still carry CORS headers.
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request("http://localhost/api/quotes/BIT:VWCE", {
+				headers: { Origin: "https://app.example.com" },
+			});
+			const response = await worker.fetch(request, corsEnv, ctx);
+
+			expect(response.status).toBe(500);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			expect(response.headers.get("Vary")).toBe("Origin");
 		});
 
 		it("should reflect the requesting origin on a cache hit", async () => {
