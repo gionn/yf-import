@@ -122,7 +122,7 @@ async function tryRewriteExchangeSymbol(
 	if (!candidate) return null;
 
 	const meta = await getYahooMeta(candidate, fetchTimeoutMs);
-	if (meta?.regularMarketPrice != null) {
+	if (meta !== null) {
 		return Response.redirect(
 			`${url.origin}${apiPath}/${encodeURIComponent(candidate)}`,
 			301,
@@ -144,31 +144,29 @@ export default {
 			const symbol = quotesMatch[1];
 
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
-
-			// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-			const rewriteRedirect = await tryRewriteExchangeSymbol(
-				symbol,
-				url,
-				fetchTimeoutMs,
-			);
-			if (rewriteRedirect) return rewriteRedirect;
-
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 
 			// Create cache key from the request URL
 			const cacheKey = new Request(`${url.origin}${url.pathname}`, request);
 			const cache = caches.default;
 
-			// Check if we have a cached response
-			let response = await cache.match(cacheKey);
-
-			if (response) {
-				// Return cached response
-				return response;
-			}
-
-			// Cache miss - fetch from Yahoo Finance
 			try {
+				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+				const rewriteRedirect = await tryRewriteExchangeSymbol(
+					symbol,
+					url,
+					fetchTimeoutMs,
+				);
+				if (rewriteRedirect) return rewriteRedirect;
+
+				// Check if we have a cached response
+				const cached = await cache.match(cacheKey);
+				if (cached) {
+					// Return cached response
+					return cached;
+				}
+
+				// Cache miss - fetch from Yahoo Finance
 				const meta = await getYahooMeta(symbol, fetchTimeoutMs);
 				const price = meta?.regularMarketPrice ?? null;
 
@@ -182,7 +180,7 @@ export default {
 					});
 				}
 
-				response = new Response(price.toString(), {
+				const response = new Response(price.toString(), {
 					status: 200,
 					headers: {
 						"Content-Type": "text/plain",
@@ -214,16 +212,6 @@ export default {
 			const symbol = detailsMatch[1];
 
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
-
-			// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
-			const rewriteRedirect = await tryRewriteExchangeSymbol(
-				symbol,
-				url,
-				fetchTimeoutMs,
-				"/api/details",
-			);
-			if (rewriteRedirect) return rewriteRedirect;
-
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 			const format = resolveFormat(request, url);
 
@@ -236,19 +224,27 @@ export default {
 			);
 			const cache = caches.default;
 
-			// Check if we have a cached response
-			let response = await cache.match(cacheKey);
-
-			if (response) {
-				// Return cached response
-				return response;
-			}
-
 			const contentType =
 				format === "json" ? "application/json" : "text/csv; charset=utf-8";
 
-			// Cache miss - fetch from Yahoo Finance
 			try {
+				// Try exchange-prefixed rewrite (e.g. BIT:VWCE -> VWCE.MI)
+				const rewriteRedirect = await tryRewriteExchangeSymbol(
+					symbol,
+					url,
+					fetchTimeoutMs,
+					"/api/details",
+				);
+				if (rewriteRedirect) return rewriteRedirect;
+
+				// Check if we have a cached response
+				const cached = await cache.match(cacheKey);
+				if (cached) {
+					// Return cached response
+					return cached;
+				}
+
+				// Cache miss - fetch from Yahoo Finance
 				const meta = await getYahooMeta(symbol, fetchTimeoutMs);
 
 				if (meta === null) {
@@ -271,11 +267,12 @@ export default {
 						? JSON.stringify(buildDetails(meta, symbol))
 						: detailsToCsv(meta, symbol);
 
-				response = new Response(body, {
+				const response = new Response(body, {
 					status: 200,
 					headers: {
 						"Content-Type": contentType,
 						"Cache-Control": `public, max-age=${cacheTTL}`,
+						Vary: "Accept",
 					},
 				});
 

@@ -182,7 +182,7 @@ these columns, in order:
 | # | Column             | Description                                            |
 | - | ------------------ | ------------------------------------------------------ |
 | 1 | `symbol`           | Yahoo Finance symbol (e.g. `VWCE.MI`)                  |
-| 2 | `description`      | Instrument name (`longName`, falling back to `shortName`) |
+| 2 | `description`      | Instrument name (`longName`, falling back to `shortName`, then the requested symbol) |
 | 3 | `currency`         | Quote currency (e.g. `EUR`)                            |
 | 4 | `price`            | Current market price                                   |
 | 5 | `fiftyTwoWeekHigh` | 52-week high                                           |

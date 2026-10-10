@@ -29,7 +29,9 @@ describe("Quotes API", () => {
 			ctx = createExecutionContext();
 		});
 
-		afterEach(() => {
+		afterEach(async () => {
+			// Wait for scheduled cache writes before restoring globals
+			await waitOnExecutionContext(ctx);
 			// Properly restore globals
 			vi.unstubAllGlobals();
 		});
@@ -283,6 +285,20 @@ describe("Quotes API", () => {
 			expect(response.status).toBe(404);
 			expect(await response.text()).toContain("Price not available");
 		});
+
+		it("should return 500 when the rewrite probe fails", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request("http://localhost/api/quotes/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(await response.text()).toContain("Error fetching quote");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
+		});
 	});
 
 	describe("Other routes", () => {
@@ -346,7 +362,9 @@ describe("Details API", () => {
 			ctx = createExecutionContext();
 		});
 
-		afterEach(() => {
+		afterEach(async () => {
+			// Wait for scheduled cache writes before restoring globals
+			await waitOnExecutionContext(ctx);
 			vi.unstubAllGlobals();
 		});
 
@@ -376,6 +394,7 @@ describe("Details API", () => {
 			expect(response.headers.get("Content-Type")).toBe(
 				"text/csv; charset=utf-8",
 			);
+			expect(response.headers.get("Vary")).toBe("Accept");
 			expect(await response.text()).toBe(
 				"VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2",
 			);
@@ -542,6 +561,34 @@ describe("Details API", () => {
 			expect(response.headers.get("Location")).toBe(
 				"http://localhost/api/details/VWCE.MI",
 			);
+		});
+
+		it("should redirect when the rewritten symbol exists without a current price", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({ symbol: "VWCE.MI", currency: "EUR" }),
+			);
+
+			const request = new Request("http://localhost/api/details/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe(
+				"http://localhost/api/details/VWCE.MI",
+			);
+		});
+
+		it("should return 500 when the rewrite probe fails", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request("http://localhost/api/details/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(await response.text()).toContain("Error fetching details");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
 		});
 
 		it("should serve cached responses on cache hit", async () => {
