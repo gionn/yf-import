@@ -1,0 +1,9 @@
+# Local development variables/secrets for `wrangler dev`.
+#
+# Copy this file to `.dev.vars` (which is gitignored) and adjust the values.
+# Anything defined here is loaded as an `env` binding during local development,
+# keeping values out of the public repository.
+#
+# Comma-separated list of exact origins allowed to read API responses
+# cross-origin. Leave empty (or omit) to disable CORS.
+ALLOWED_ORIGINS="http://localhost:5173"

@@ -212,12 +212,23 @@ documentation, a homepage, or any relevant resource.
 
 By default the worker does not send any CORS headers, so browser JavaScript
 from other sites cannot read the responses. To let specific websites fetch the
-API directly from the browser, list their exact origins (comma-separated):
+API directly from the browser, provide a comma-separated list of their exact
+origins via the `ALLOWED_ORIGINS` environment variable.
 
-```toml
-[vars]
-ALLOWED_ORIGINS = "https://app.example.com,https://sheets.example.org"
+Because this repository is public, do **not** put the list in `wrangler.toml`'s
+`[vars]` (which is plaintext and committed). Instead set it as a Worker
+**secret**, whose value is not readable after it is defined:
+
+```bash
+npx wrangler secret put ALLOWED_ORIGINS
+# paste e.g.: https://app.example.com,https://sheets.example.org
 ```
+
+Or add it in the Cloudflare dashboard under **Worker > Settings > Variables and
+Secrets** with type **Secret**.
+
+For local development, copy [`.dev.vars.example`](.dev.vars.example) to
+`.dev.vars` (gitignored) and set `ALLOWED_ORIGINS` there.
 
 When a request carries an `Origin` header, the worker echoes that origin in
 `Access-Control-Allow-Origin` **only if it exactly matches** an entry in the
@@ -226,8 +237,9 @@ origin still succeed but receive no CORS header, which makes the browser block
 JavaScript from reading the response.
 
 The configured list is never disclosed to callers — only the caller's own
-origin is ever echoed back, and only when it matches. Leave `ALLOWED_ORIGINS`
-empty to disable CORS entirely.
+origin is ever echoed back, and only when it matches — and, by using a secret,
+it is not disclosed in the repository either. Leave `ALLOWED_ORIGINS` unset to
+disable CORS entirely.
 
 > **Note:** CORS only restricts which browser pages can *read* the response. It
 > is not access control: tools such as `curl`, server-side scripts, and Google

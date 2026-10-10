@@ -26,7 +26,7 @@ Single-file Cloudflare Worker (`src/index.ts`) behind the `yf-import` service na
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
 - **CORS**: The quote route echoes a request's `Origin` in `Access-Control-Allow-Origin` (plus `Vary: Origin`) only when it exactly matches a comma-separated entry in `ALLOWED_ORIGINS`. The allowlist is never disclosed; disallowed/absent origins get no CORS header. CORS headers are applied per-request after cache lookup, so the cached body stays origin-agnostic. `OPTIONS` preflight returns 204.
-- **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
+- **Env vars**: `CACHE_TTL`, `ROOT_REDIRECT_URL` set in wrangler.toml `[vars]`; `ALLOWED_ORIGINS` is a **secret** (not in `[vars]`, so the public repo does not disclose the allowlist). Set via `wrangler secret put ALLOWED_ORIGINS` or the dashboard; use `.dev.vars` (gitignored, see `.dev.vars.example`) for local dev.
 
 ## Testing
 
