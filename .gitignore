@@ -4,8 +4,7 @@ node_modules/
 .pnp.js
 
 # Cloudflare Workers
-.dev.vars*
-!.dev.vars.example
+.dev.vars
 .wrangler/
 dist/
 worker/

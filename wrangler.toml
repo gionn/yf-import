@@ -6,17 +6,11 @@ compatibility_date = "2026-01-20"
 [vars]
 CACHE_TTL = "3600" # 1 hour
 ROOT_REDIRECT_URL = "https://gionn.net/2026/google-sheets-yahoo-finance-fix/"
-
-# NOTE: ALLOWED_ORIGINS is intentionally NOT set here. Everything in [vars] is
-# plaintext and committed to this public repository, which would disclose the
-# allowlist. Set it as a Worker Secret instead (values are not visible in
-# Wrangler or the dashboard once defined):
-#
-#   npx wrangler secret put ALLOWED_ORIGINS
-#   # e.g. https://app.example.com,https://sheets.example.org
-#
-# Or via the dashboard: Worker > Settings > Variables and Secrets > Add > Secret.
-# For local development, copy .dev.vars.example to .dev.vars (gitignored).
+# Comma-separated list of exact origins allowed to read API responses
+# cross-origin (CORS), e.g. "https://app.example.com,https://sheets.example.org".
+# Leave empty to disable CORS entirely. The list is never disclosed to callers:
+# only the caller's own origin is echoed back, and only when it matches.
+ALLOWED_ORIGINS = "http://localhost:5173"
 
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]
