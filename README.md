@@ -288,3 +288,9 @@ The worker makes requests to Yahoo Finance's public quote API and returns the `r
 This project is **not affiliated with, endorsed by, or in any way officially connected with Yahoo, Yahoo Finance, or any of their subsidiaries or affiliates**. The official Yahoo Finance website can be found at [finance.yahoo.com](https://finance.yahoo.com).
 
 This tool is provided for educational and personal use only. Users are responsible for ensuring their use complies with Yahoo Finance's Terms of Service and any applicable rate limits or usage restrictions. Use at your own risk.
+
+## Built with OpenCode
+
+This project is developed using [OpenCode](https://opencode.ai) with the
+**DeepSeek V4.1 Flash** model served through
+[OpenRouter](https://openrouter.ai).
