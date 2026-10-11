@@ -10,13 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` — start local dev server via wrangler
 - `npm run deploy` — deploy to Cloudflare Workers
 - `npm run generate-types` — regenerate worker-configuration.d.ts from wrangler.toml
-- `npx biome check src/index.ts` — lint a single file (biome runs via pre-commit, no dedicated script)
+- `npx biome check src/` — lint the worker sources (biome runs via pre-commit, no dedicated script)
 - `pre-commit run --all-files` — run pre-commit hooks across all files
 - `npm run generate-types && npm test` — regenerate types before tests if wrangler.toml changed
 
 ## Architecture
 
-Single-file Cloudflare Worker (`src/index.ts`) behind the `yf-import` service name.
+Cloudflare Worker behind the `yf-import` service name. The route handler and shared helpers live in `src/index.ts`; the CORS layer is factored into `src/cors.ts`.
 
 - **Route**: `GET /api/quotes/:symbol` — fetches a numeric price from Yahoo Finance public chart API and returns it as plain text (e.g. `150.25`)
 - **Route**: `GET /api/details/:symbol` — returns one CSV row (`symbol,description,currency,price,fiftyTwoWeekHigh,fiftyTwoWeekLow`) or JSON via `?format=json` / `Accept: application/json`. `description` falls back `longName` → `shortName` → symbol; missing numerics are empty cells / `null`. CSV and JSON are cached under separate keys (format is part of the cache key).
@@ -28,7 +28,7 @@ Single-file Cloudflare Worker (`src/index.ts`) behind the `yf-import` service na
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
   - The redirect targets the same route family (`/api/quotes` or `/api/details`)
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
-- **CORS**: Both routes echo a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always send `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors.
+- **CORS**: Both routes echo a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always send `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors` in `src/cors.ts`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors. `corsGuarded` takes an `errorResponse(message)` builder so each route emits failures in its own format.
 - **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
 
 ## Testing
