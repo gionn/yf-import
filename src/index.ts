@@ -137,8 +137,17 @@ function resolveFormat(request: Request, url: URL): "csv" | "json" {
 	const format = url.searchParams.get("format")?.toLowerCase();
 	if (format === "json" || format === "csv") return format;
 
-	const accept = request.headers.get("Accept") || "";
-	return accept.includes("application/json") ? "json" : "csv";
+	const accept = request.headers.get("Accept");
+	if (!accept) return "csv";
+	// Media types are case-insensitive; compare the type token exactly so
+	// prefixes like `application/json-seq` don't spuriously select JSON.
+	const wantsJson = accept
+		.split(",")
+		.some(
+			(range) =>
+				range.split(";")[0].trim().toLowerCase() === "application/json",
+		);
+	return wantsJson ? "json" : "csv";
 }
 
 async function tryRewriteExchangeSymbol(

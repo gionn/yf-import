@@ -677,6 +677,45 @@ describe("Details API", () => {
 			expect(body.fiftyTwoWeekLow).toBeNull();
 		});
 
+		it("should match the Accept media type case-insensitively", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "CASING",
+					longName: "Casing",
+					currency: "USD",
+					regularMarketPrice: 1,
+				}),
+			);
+
+			const request = new Request("http://localhost/api/details/CASING", {
+				headers: { Accept: "Application/JSON" },
+			});
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(JSON.parse(await response.text()).symbol).toBe("CASING");
+		});
+
+		it("should only match an exact JSON media type, not a prefix", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({
+					symbol: "JSONSEQ",
+					longName: "Json Seq",
+					currency: "USD",
+					regularMarketPrice: 1,
+				}),
+			);
+
+			const request = new Request("http://localhost/api/details/JSONSEQ", {
+				headers: { Accept: "application/json-seq" },
+			});
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+		});
+
 		it("should return 404 when the symbol is not found", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
@@ -1028,23 +1067,40 @@ describe("Integration Tests", () => {
 			async () => {
 				const ctx = createExecutionContext();
 
+				// Field-level assertions go through JSON: the description is
+				// mutable and may contain commas, so splitting the CSV row on
+				// commas would be a fragile parse.
 				const request = new Request(
-					`http://localhost/api/details/${liveSymbol}`,
+					`http://localhost/api/details/${liveSymbol}?format=json`,
 				);
 				const response = await worker.fetch(request, env, ctx);
 
 				expect(response.status).toBe(200);
-				expect(response.headers.get("Content-Type")).toBe(
-					"text/csv; charset=utf-8",
-				);
+				expect(response.headers.get("Content-Type")).toBe("application/json");
 
-				const fields = (await response.text()).split(",");
-				expect(fields).toHaveLength(6);
-				expect(fields[0]).toBe(liveSymbol);
-				expect(fields[1]).toContain("Vanguard");
-				expect(fields[2]).toBe("EUR");
-				expect(Number.parseFloat(fields[3])).toBeGreaterThan(0);
+				const body = JSON.parse(await response.text());
+				expect(body.symbol).toBe(liveSymbol);
+				expect(body.description).toContain("Vanguard");
+				expect(body.currency).toBe("EUR");
+				expect(body.price).toBeGreaterThan(0);
 			},
 		);
+
+		it("should serve real details as CSV", { timeout: 10000 }, async () => {
+			const ctx = createExecutionContext();
+
+			const response = await worker.fetch(
+				new Request(`http://localhost/api/details/${liveSymbol}`),
+				env,
+				ctx,
+			);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+			// No comma-splitting: just confirm the row leads with the symbol.
+			expect((await response.text()).startsWith(`${liveSymbol},`)).toBe(true);
+		});
 	});
 });
