@@ -16,6 +16,13 @@ securities that Google Finance (via `GOOGLEFINANCE` function) stopped serving.
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
+Swap `/api/quotes` for `/api/details` to pull the name, currency, price and
+52-week range as separate columns:
+
+```text
+=IMPORTDATA("https://yf-import.gionn.net/api/details/VWCE.MI")
+```
+
 You can easily find a symbol by looking at the Yahoo Finance URL when
 viewing an asset page.
 
@@ -26,6 +33,8 @@ viewing an asset page.
 - 📈 Real-time stock prices from Yahoo Finance
 - 🔁 Automatic symbol rewriting for certain exchange prefixes (e.g., `BIT:VWCE`
   → `VWCE.MI`)
+- 📋 Asset details endpoint (description, currency, price, 52-week range) as CSV
+  or JSON
 - 🌐 Global availability with low latency
 - 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
@@ -167,6 +176,45 @@ Finance, the worker responds with a 301 redirect to `/api/quotes/VWCE.MI`. This
 allows users to use symbols from Google Finance while still getting the quotes
 from Yahoo Finance.
 
+### Get Asset Details by Symbol
+
+```bash
+curl http://localhost:8787/api/details/VWCE.MI
+# Returns: VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2
+```
+
+The endpoint format is `/api/details/{SYMBOL}` and returns a single CSV row with
+these columns, in order:
+
+| # | Column             | Description                                            |
+| - | ------------------ | ------------------------------------------------------ |
+| 1 | `symbol`           | Yahoo Finance symbol (e.g. `VWCE.MI`)                  |
+| 2 | `description`      | Instrument name (`longName`, falling back to `shortName`, then the requested symbol) |
+| 3 | `currency`         | Quote currency (e.g. `EUR`)                            |
+| 4 | `price`            | Current market price                                   |
+| 5 | `fiftyTwoWeekHigh` | 52-week high                                           |
+| 6 | `fiftyTwoWeekLow`  | 52-week low                                            |
+
+Missing numeric values are returned as empty cells.
+
+This is convenient with `IMPORTDATA()`, which parses the row into separate
+columns:
+
+```text
+=IMPORTDATA("https://yf-import.gionn.net/api/details/VWCE.MI")
+```
+
+For programmatic use, request JSON either with the `format=json` query param or
+by sending an `Accept: application/json` header:
+
+```bash
+curl "http://localhost:8787/api/details/VWCE.MI?format=json"
+# Returns: {"symbol":"VWCE.MI","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","currency":"EUR","price":172.89,"fiftyTwoWeekHigh":173.98,"fiftyTwoWeekLow":138.2}
+```
+
+Symbol rewriting applies here too (`BIT:VWCE` → `/api/details/VWCE.MI`), and the
+same edge caching as `/api/quotes` is used.
+
 ## Project Structure
 
 - `src/index.ts` - Main worker code with Yahoo Finance API integration
@@ -221,7 +269,9 @@ ALLOWED_ORIGINS = "https://app.example.com,https://sheets.example.org"
 A request's `Origin` is echoed in `Access-Control-Allow-Origin` only on an exact
 match; other origins still get the data but no header, so the browser blocks it.
 `Vary: Origin` is always sent so caches stay correct, and `OPTIONS` preflights
-from allowed origins return `204` with the requested methods and headers.
+from allowed origins return `204` with the requested methods and headers. This
+applies to both `/api/quotes` and `/api/details`; the details response varies on
+both `Accept` and `Origin`.
 
 The list is never disclosed — only the caller's own origin is echoed back.
 
