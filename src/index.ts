@@ -146,6 +146,7 @@ async function tryRewriteExchangeSymbol(
 	url: URL,
 	fetchTimeoutMs: number,
 	apiPath = "/api/quotes",
+	requirePrice = false,
 ): Promise<Response | null> {
 	let candidate: string | null = null;
 
@@ -160,13 +161,16 @@ async function tryRewriteExchangeSymbol(
 	if (!candidate) return null;
 
 	const meta = await getYahooMeta(candidate, fetchTimeoutMs);
-	if (meta !== null) {
-		return Response.redirect(
-			`${url.origin}${apiPath}/${encodeURIComponent(candidate)}${url.search}`,
-			301,
-		);
-	}
-	return null;
+	if (meta === null) return null;
+	// `/api/quotes` needs a usable price, so a metadata-only candidate must
+	// fall through to the 404 path rather than redirect to a dead symbol.
+	// `/api/details` accepts metadata without a price.
+	if (requirePrice && typeof meta.regularMarketPrice !== "number") return null;
+
+	return Response.redirect(
+		`${url.origin}${apiPath}/${encodeURIComponent(candidate)}${url.search}`,
+		301,
+	);
 }
 
 export default {
@@ -203,6 +207,8 @@ export default {
 						symbol,
 						url,
 						fetchTimeoutMs,
+						"/api/quotes",
+						true,
 					);
 					if (rewriteRedirect) return rewriteRedirect;
 

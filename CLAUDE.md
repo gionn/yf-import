@@ -25,6 +25,9 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 - **Symbol rewriting** (applied to both routes before fetching):
   - `BIT:SYMBOL` → probes `SYMBOL.MI`, redirects 301 if it exists
   - `SYMBOL.FR` → probes `SYMBOL.PA`, redirects 301 if it exists
+  - `/api/quotes` only redirects when the candidate has a current price;
+    `/api/details` redirects on metadata alone (a missing price is still a valid
+    details response)
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
   - The redirect targets the same route family (`/api/quotes` or `/api/details`)
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
@@ -37,3 +40,4 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 - Yahoo Finance API calls are mocked via `vi.stubGlobal("fetch", vi.fn())` in unit tests
 - One real integration test hits the live Yahoo Finance API (tagged `{ timeout: 10000 }`) — use `it.skip` when offline
 - Tests create per-case `ExecutionContext` via `createExecutionContext()` and call `waitOnExecutionContext()` in afterEach
+- The Cache API is **not** reset between tests. Mocked unit tests therefore use throwaway symbols (e.g. `MOCK.MI`), and the live integration tests reserve real symbols (e.g. `VWCE.MI`) so a mocked cache entry can never satisfy a live assertion.

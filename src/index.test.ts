@@ -286,6 +286,36 @@ describe("Quotes API", () => {
 			expect(await response.text()).toContain("Price not available");
 		});
 
+		it("should not redirect a candidate that has metadata but no price", async () => {
+			// The rewrite probe finds metadata without a current price. Quotes
+			// must not redirect on metadata alone, or it would 301 to a symbol
+			// that then 404s.
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					chart: {
+						result: [{ meta: { symbol: "VWCE.MI", currency: "EUR" } }],
+					},
+				}),
+			});
+
+			// Fall through to the original symbol, which also has no price
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					chart: {
+						result: [{ meta: { symbol: "VWCE.MI", currency: "EUR" } }],
+					},
+				}),
+			});
+
+			const request = new Request("http://localhost/api/quotes/BIT:VWCE");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toContain("Price not available");
+		});
+
 		it("should return 500 when the rewrite probe fails", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce({
 				ok: false,
@@ -509,7 +539,7 @@ describe("Quotes API", () => {
 
 describe("Details API", () => {
 	const detailsMeta = {
-		symbol: "VWCE.MI",
+		symbol: "MOCK.MI",
 		longName: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
 		currency: "EUR",
 		regularMarketPrice: 172.89,
@@ -541,7 +571,7 @@ describe("Details API", () => {
 				metaResponse(detailsMeta),
 			);
 
-			const request = new Request("http://localhost/api/details/VWCE.MI");
+			const request = new Request("http://localhost/api/details/MOCK.MI");
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(200);
@@ -550,7 +580,7 @@ describe("Details API", () => {
 			);
 			expect(response.headers.get("Vary")).toBe("Accept, Origin");
 			expect(await response.text()).toBe(
-				"VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2",
+				"MOCK.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2",
 			);
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
 		});
@@ -609,14 +639,14 @@ describe("Details API", () => {
 			);
 
 			const request = new Request(
-				"http://localhost/api/details/VWCE.MI?format=json",
+				"http://localhost/api/details/MOCK.MI?format=json",
 			);
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get("Content-Type")).toBe("application/json");
 			expect(JSON.parse(await response.text())).toEqual({
-				symbol: "VWCE.MI",
+				symbol: "MOCK.MI",
 				description: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
 				currency: "EUR",
 				price: 172.89,
@@ -968,11 +998,17 @@ describe("Details API", () => {
 });
 
 describe("Integration Tests", () => {
+	// Mocked unit tests use throwaway symbols (e.g. MOCK.MI), leaving real
+	// symbols like VWCE.MI free for these live tests. That matters because the
+	// Cache API is not reset between tests: a live test sharing a symbol with a
+	// unit test would read that test's mocked cache entry instead of Yahoo.
+	const liveSymbol = "VWCE.MI";
+
 	describe("Real Yahoo Finance API", () => {
 		it("should fetch real quote for VWCE.MI", { timeout: 10000 }, async () => {
 			const ctx = createExecutionContext();
 
-			const request = new Request("http://localhost/api/quotes/VWCE.MI");
+			const request = new Request(`http://localhost/api/quotes/${liveSymbol}`);
 			const response = await worker.fetch(request, env, ctx);
 
 			const responseText = await response.text();
@@ -992,7 +1028,9 @@ describe("Integration Tests", () => {
 			async () => {
 				const ctx = createExecutionContext();
 
-				const request = new Request("http://localhost/api/details/VWCE.MI");
+				const request = new Request(
+					`http://localhost/api/details/${liveSymbol}`,
+				);
 				const response = await worker.fetch(request, env, ctx);
 
 				expect(response.status).toBe(200);
@@ -1002,7 +1040,7 @@ describe("Integration Tests", () => {
 
 				const fields = (await response.text()).split(",");
 				expect(fields).toHaveLength(6);
-				expect(fields[0]).toBe("VWCE.MI");
+				expect(fields[0]).toBe(liveSymbol);
 				expect(fields[1]).toContain("Vanguard");
 				expect(fields[2]).toBe("EUR");
 				expect(Number.parseFloat(fields[3])).toBeGreaterThan(0);
