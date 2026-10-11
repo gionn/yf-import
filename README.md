@@ -16,6 +16,13 @@ securities that Google Finance (via `GOOGLEFINANCE` function) stopped serving.
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
+Swap `/api/quotes` for `/api/details` to pull the name, currency, price and
+52-week range as separate columns:
+
+```text
+=IMPORTDATA("https://yf-import.gionn.net/api/details/VWCE.MI")
+```
+
 You can easily find a symbol by looking at the Yahoo Finance URL when
 viewing an asset page.
 
