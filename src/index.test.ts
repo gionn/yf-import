@@ -693,6 +693,42 @@ describe("Details API", () => {
 			expect(response.headers.get("Cache-Control")).toBe("no-store");
 		});
 
+		it("should return a JSON 500 when Yahoo fails in JSON mode", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request(
+				"http://localhost/api/details/FAIL500JSON?format=json",
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
+			const body = JSON.parse(await response.text());
+			expect(body.error).toContain("Error fetching details");
+		});
+
+		it("should return a JSON 500 for Accept: application/json on upstream failure", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+			});
+
+			const request = new Request(
+				"http://localhost/api/details/FAIL500ACCEPT",
+				{ headers: { Accept: "application/json" } },
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(500);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			const body = JSON.parse(await response.text());
+			expect(body.error).toContain("Error fetching details");
+		});
+
 		it("should only respond to GET requests", async () => {
 			const request = new Request("http://localhost/api/details/AAPL", {
 				method: "POST",
@@ -714,6 +750,22 @@ describe("Details API", () => {
 			expect(response.status).toBe(301);
 			expect(response.headers.get("Location")).toBe(
 				"http://localhost/api/details/VWCE.MI",
+			);
+		});
+
+		it("should preserve the query string when redirecting a rewrite", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				metaResponse({ regularMarketPrice: 123.45 }),
+			);
+
+			const request = new Request(
+				"http://localhost/api/details/BIT:VWCE?format=json",
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(301);
+			expect(response.headers.get("Location")).toBe(
+				"http://localhost/api/details/VWCE.MI?format=json",
 			);
 		});
 

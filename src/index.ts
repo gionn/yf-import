@@ -119,13 +119,15 @@ async function corsGuarded(
 	handler: () => Promise<Response>,
 	allowedOrigin: string | null,
 	errorLabel: string,
+	errorResponse?: (message: string) => Response,
 ): Promise<Response> {
 	try {
 		return withCors(await handler(), allowedOrigin);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unknown error";
+		const body = `Error fetching ${errorLabel}: ${message}`;
 		return withCors(
-			noStoreResponse(`Error fetching ${errorLabel}: ${message}`, 500),
+			errorResponse ? errorResponse(body) : noStoreResponse(body, 500),
 			allowedOrigin,
 		);
 	}
@@ -273,7 +275,7 @@ async function tryRewriteExchangeSymbol(
 	const meta = await getYahooMeta(candidate, fetchTimeoutMs);
 	if (meta !== null) {
 		return Response.redirect(
-			`${url.origin}${apiPath}/${encodeURIComponent(candidate)}`,
+			`${url.origin}${apiPath}/${encodeURIComponent(candidate)}${url.search}`,
 			301,
 		);
 	}
@@ -342,6 +344,7 @@ export default {
 				},
 				allowedOrigin,
 				"quote",
+				(message) => noStoreResponse(message, 500),
 			);
 		}
 
@@ -414,6 +417,12 @@ export default {
 				},
 				allowedOrigin,
 				"details",
+				(message) =>
+					noStoreResponse(
+						format === "json" ? JSON.stringify({ error: message }) : message,
+						500,
+						contentType,
+					),
 			);
 		}
 
