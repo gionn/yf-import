@@ -10,7 +10,7 @@ ROOT_REDIRECT_URL = "https://gionn.net/2026/google-sheets-yahoo-finance-fix/"
 # cross-origin (CORS), e.g. "https://app.example.com,https://sheets.example.org".
 # Set an empty string to disable CORS. The list is never disclosed to callers:
 # only the caller's own origin is echoed back, and only when it matches.
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "http://localhost:5173,https://bussola.gionn.net"
 
 # Uncomment to use KV for caching/storage
 # [[kv_namespaces]]
