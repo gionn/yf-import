@@ -52,6 +52,23 @@ describe("Quotes API", () => {
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
 		});
 
+		it("should request a one-day intraday series for quotes", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: true,
+				json: async () => mockYahooResponse(150.25),
+			});
+
+			await worker.fetch(
+				new Request("http://localhost/api/quotes/RANGEQ"),
+				env,
+				ctx,
+			);
+
+			const requestedUrl = (globalThis.fetch as any).mock.calls[0][0];
+			expect(requestedUrl).toContain("range=1d");
+			expect(requestedUrl).toContain("interval=1m");
+		});
+
 		it("should return 404 when price is not available", async () => {
 			// Mock API response with no price
 			(globalThis.fetch as any).mockResolvedValueOnce({
@@ -545,12 +562,76 @@ describe("Details API", () => {
 		regularMarketPrice: 172.89,
 		fiftyTwoWeekHigh: 173.98,
 		fiftyTwoWeekLow: 138.2,
+		regularMarketChangePercent: 0.199,
+		regularMarketDayHigh: 173.5,
+		regularMarketDayLow: 172.2,
+		regularMarketVolume: 12345,
+		instrumentType: "ETF",
+		exchangeName: "MIL",
+		exchangeTimezoneName: "Europe/Rome",
+		regularMarketTime: 1792424111,
+		firstTradeDate: 1578988800,
+		chartPreviousClose: 140.32,
 	};
 
-	const metaResponse = (meta: Record<string, unknown>) => ({
+	interface MockCandle {
+		timestamp?: number;
+		high?: number | null;
+		low?: number | null;
+		close?: number | null;
+		volume?: number | null;
+		adjclose?: number | null;
+	}
+
+	const chartResponse = (
+		meta: Record<string, unknown>,
+		candles: MockCandle[] = [],
+	) => ({
 		ok: true,
-		json: async () => ({ chart: { result: [{ meta }] } }),
+		json: async () => ({
+			chart: {
+				result: [
+					{
+						meta,
+						timestamp: candles.map(
+							(candle, i) => candle.timestamp ?? 1730000000 + i * 86_400,
+						),
+						indicators: {
+							quote: [
+								{
+									high: candles.map((candle) => candle.high ?? null),
+									low: candles.map((candle) => candle.low ?? null),
+									close: candles.map((candle) => candle.close ?? null),
+									volume: candles.map((candle) => candle.volume ?? null),
+								},
+							],
+							adjclose: [
+								{
+									adjclose: candles.map(
+										(candle) => candle.adjclose ?? candle.close ?? null,
+									),
+								},
+							],
+						},
+					},
+				],
+			},
+		}),
 	});
+
+	// Volatility, returns, drawdown, SMAs, dates and average volume.
+	const emptyStatsTail = ",".repeat(10);
+	// The ten stats plus the ten meta fields these mocks omit.
+	const emptyMetaAndStatsTail = ",".repeat(20);
+
+	const flatCandles = (count: number): MockCandle[] =>
+		Array.from({ length: count }, (_, i) => ({
+			timestamp: Date.UTC(2024, 0, 1) / 1000 + i * 86_400,
+			high: 101,
+			low: 99,
+			close: 100,
+			volume: 1000,
+		}));
 
 	describe("GET /api/details/:symbol", () => {
 		let ctx: ExecutionContext;
@@ -568,7 +649,7 @@ describe("Details API", () => {
 
 		it("should return a single CSV row with all fields", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse(detailsMeta),
+				chartResponse(detailsMeta),
 			);
 
 			const request = new Request("http://localhost/api/details/MOCK.MI");
@@ -580,14 +661,14 @@ describe("Details API", () => {
 			);
 			expect(response.headers.get("Vary")).toBe("Accept, Origin");
 			expect(await response.text()).toBe(
-				"MOCK.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2",
+				`MOCK.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2,0.199,173.5,172.2,12345,ETF,MIL,Europe/Rome,2026-10-19T15:35:11.000Z,2020-01-14,140.32${emptyStatsTail}`,
 			);
 			expect(response.headers.get("Cache-Control")).toContain("max-age=");
 		});
 
 		it("should fall back to shortName for description", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "XYZ",
 					shortName: "Short Name",
 					currency: "USD",
@@ -599,23 +680,27 @@ describe("Details API", () => {
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(200);
-			expect(await response.text()).toBe("XYZ,Short Name,USD,10,,");
+			expect(await response.text()).toBe(
+				`XYZ,Short Name,USD,10,,${emptyMetaAndStatsTail}`,
+			);
 		});
 
 		it("should fall back to the symbol when no name is available", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({ currency: "USD", regularMarketPrice: 5 }),
+				chartResponse({ currency: "USD", regularMarketPrice: 5 }),
 			);
 
 			const request = new Request("http://localhost/api/details/NONAME");
 			const response = await worker.fetch(request, env, ctx);
 
-			expect(await response.text()).toBe("NONAME,NONAME,USD,5,,");
+			expect(await response.text()).toBe(
+				`NONAME,NONAME,USD,5,,${emptyMetaAndStatsTail}`,
+			);
 		});
 
 		it("should escape commas and quotes in CSV fields", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "ESC",
 					longName: 'Vanguard "Test", Fund',
 					currency: "EUR",
@@ -629,13 +714,13 @@ describe("Details API", () => {
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(await response.text()).toBe(
-				'ESC,"Vanguard ""Test"", Fund",EUR,1,2,3',
+				`ESC,"Vanguard ""Test"", Fund",EUR,1,2,3${emptyMetaAndStatsTail}`,
 			);
 		});
 
 		it("should return JSON when format=json is requested", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse(detailsMeta),
+				chartResponse(detailsMeta),
 			);
 
 			const request = new Request(
@@ -652,12 +737,32 @@ describe("Details API", () => {
 				price: 172.89,
 				fiftyTwoWeekHigh: 173.98,
 				fiftyTwoWeekLow: 138.2,
+				changePercent: 0.199,
+				dayHigh: 173.5,
+				dayLow: 172.2,
+				volume: 12345,
+				instrumentType: "ETF",
+				exchangeName: "MIL",
+				exchangeTimezone: "Europe/Rome",
+				marketTime: "2026-10-19T15:35:11.000Z",
+				firstTradeDate: "2020-01-14",
+				chartPreviousClose: 140.32,
+				volatility: null,
+				return1y: null,
+				maxDrawdown: null,
+				sma50: null,
+				distanceFromSma50: null,
+				sma200: null,
+				distanceFromSma200: null,
+				fiftyTwoWeekHighDate: null,
+				fiftyTwoWeekLowDate: null,
+				averageVolume: null,
 			});
 		});
 
 		it("should return JSON when Accept: application/json is sent", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "ACCEPT",
 					longName: "Accepted",
 					currency: "USD",
@@ -679,7 +784,7 @@ describe("Details API", () => {
 
 		it("should match the Accept media type case-insensitively", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "CASING",
 					longName: "Casing",
 					currency: "USD",
@@ -698,7 +803,7 @@ describe("Details API", () => {
 
 		it("should only match an exact JSON media type, not a prefix", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "JSONSEQ",
 					longName: "Json Seq",
 					currency: "USD",
@@ -714,6 +819,150 @@ describe("Details API", () => {
 			expect(response.headers.get("Content-Type")).toBe(
 				"text/csv; charset=utf-8",
 			);
+		});
+
+		it("should compute 52-week stats from daily candles", async () => {
+			const candles = Array.from({ length: 200 }, (_, i) => ({
+				timestamp: Date.UTC(2024, 0, 1) / 1000 + i * 86_400,
+				high: 100 + i + 1,
+				low: 100 + i - 1,
+				close: 100 + i,
+				volume: 1000 + i,
+			}));
+
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				chartResponse(
+					{
+						symbol: "STATS",
+						currency: "EUR",
+						regularMarketPrice: 299,
+						exchangeTimezoneName: "UTC",
+					},
+					candles,
+				),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/details/STATS?format=json"),
+				env,
+				ctx,
+			);
+
+			const body = JSON.parse(await response.text());
+			expect(body.return1y).toBe(199);
+			expect(body.maxDrawdown).toBe(0);
+			expect(body.sma50).toBe(274.5);
+			expect(body.distanceFromSma50).toBe(8.93);
+			expect(body.sma200).toBe(199.5);
+			expect(body.distanceFromSma200).toBe(49.87);
+			expect(body.averageVolume).toBe(1100);
+			expect(body.volatility).not.toBeNull();
+			expect(body.fiftyTwoWeekHighDate).toBe("2024-07-18");
+			expect(body.fiftyTwoWeekLowDate).toBe("2024-01-01");
+		});
+
+		it("should return adjusted returns but price-based SMA distances", async () => {
+			const candles = Array.from({ length: 60 }, (_, i) => ({
+				high: 101,
+				low: 99,
+				close: 100,
+				volume: 1000,
+				adjclose: i === 59 ? 150 : 100,
+			}));
+
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				chartResponse(
+					{
+						symbol: "ADJUSTED",
+						currency: "EUR",
+						regularMarketPrice: 100,
+						exchangeTimezoneName: "UTC",
+					},
+					candles,
+				),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/details/ADJUSTED?format=json"),
+				env,
+				ctx,
+			);
+
+			const body = JSON.parse(await response.text());
+			expect(body.return1y).toBe(50);
+			expect(body.sma50).toBe(100);
+			expect(body.distanceFromSma50).toBe(0);
+		});
+
+		it("should withhold volatility when there are fewer than 60 candles", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				chartResponse(
+					{
+						symbol: "YOUNG",
+						currency: "EUR",
+						regularMarketPrice: 129,
+						exchangeTimezoneName: "UTC",
+					},
+					flatCandles(30),
+				),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/details/YOUNG?format=json"),
+				env,
+				ctx,
+			);
+
+			const body = JSON.parse(await response.text());
+			expect(body.volatility).toBeNull();
+			expect(body.return1y).toBe(0);
+			expect(body.sma50).toBeNull();
+			expect(body.distanceFromSma50).toBeNull();
+		});
+
+		it("should skip null closes when computing stats", async () => {
+			const candles = flatCandles(61).map((candle, i) =>
+				i === 20 ? { ...candle, close: null, adjclose: null } : candle,
+			);
+
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				chartResponse(
+					{
+						symbol: "NULLS",
+						currency: "EUR",
+						regularMarketPrice: 100,
+						exchangeTimezoneName: "UTC",
+					},
+					candles,
+				),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/details/NULLS?format=json"),
+				env,
+				ctx,
+			);
+
+			const body = JSON.parse(await response.text());
+			expect(body.volatility).toBe(0);
+			expect(body.return1y).toBe(0);
+			expect(body.sma50).toBe(100);
+		});
+
+		it("should request a one-year daily series for details", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				chartResponse({ symbol: "RANGE" }),
+			);
+
+			await worker.fetch(
+				new Request("http://localhost/api/details/RANGE"),
+				env,
+				ctx,
+			);
+
+			const requestedUrl = (globalThis.fetch as any).mock.calls[0][0];
+			expect(requestedUrl).toContain("range=1y");
+			expect(requestedUrl).toContain("interval=1d");
 		});
 
 		it("should return 404 when the symbol is not found", async () => {
@@ -810,7 +1059,7 @@ describe("Details API", () => {
 
 		it("should rewrite BIT:VWCE to VWCE.MI and redirect with 301", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({ regularMarketPrice: 123.45 }),
+				chartResponse({ regularMarketPrice: 123.45 }),
 			);
 
 			const request = new Request("http://localhost/api/details/BIT:VWCE");
@@ -824,7 +1073,7 @@ describe("Details API", () => {
 
 		it("should preserve the query string when redirecting a rewrite", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({ regularMarketPrice: 123.45 }),
+				chartResponse({ regularMarketPrice: 123.45 }),
 			);
 
 			const request = new Request(
@@ -840,7 +1089,7 @@ describe("Details API", () => {
 
 		it("should redirect when the rewritten symbol exists without a current price", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({ symbol: "VWCE.MI", currency: "EUR" }),
+				chartResponse({ symbol: "VWCE.MI", currency: "EUR" }),
 			);
 
 			const request = new Request("http://localhost/api/details/BIT:VWCE");
@@ -868,7 +1117,7 @@ describe("Details API", () => {
 
 		it("should serve cached responses on cache hit", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "CACHED",
 					longName: "Cached Fund",
 					currency: "EUR",
@@ -879,20 +1128,24 @@ describe("Details API", () => {
 			const request1 = new Request("http://localhost/api/details/CACHED");
 			const response1 = await worker.fetch(request1, env, ctx);
 			expect(response1.status).toBe(200);
-			expect(await response1.text()).toBe("CACHED,Cached Fund,EUR,42,,");
+			expect(await response1.text()).toBe(
+				`CACHED,Cached Fund,EUR,42,,${emptyMetaAndStatsTail}`,
+			);
 			expect(globalThis.fetch).toHaveBeenCalledOnce();
 
 			const request2 = new Request("http://localhost/api/details/CACHED");
 			const response2 = await worker.fetch(request2, env, ctx);
 			expect(response2.status).toBe(200);
-			expect(await response2.text()).toBe("CACHED,Cached Fund,EUR,42,,");
+			expect(await response2.text()).toBe(
+				`CACHED,Cached Fund,EUR,42,,${emptyMetaAndStatsTail}`,
+			);
 			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
 			expect(globalThis.fetch).toHaveBeenCalledOnce();
 		});
 
 		it("should cache CSV and JSON independently", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "BOTH",
 					longName: "Both Formats",
 					currency: "EUR",
@@ -912,7 +1165,7 @@ describe("Details API", () => {
 
 			// JSON request (separate cache key, cache miss)
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "BOTH",
 					longName: "Both Formats",
 					currency: "EUR",
@@ -948,7 +1201,7 @@ describe("Details API", () => {
 
 		it("should echo an allowed origin and merge Vary with Accept", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "CORSALLOW",
 					longName: "Cors Fund",
 					currency: "EUR",
@@ -970,7 +1223,7 @@ describe("Details API", () => {
 
 		it("should not send CORS headers for a disallowed origin but still vary", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "CORSDENY",
 					longName: "Deny Fund",
 					currency: "EUR",
@@ -1007,7 +1260,7 @@ describe("Details API", () => {
 
 		it("should reflect the requesting origin on a cache hit", async () => {
 			(globalThis.fetch as any).mockResolvedValueOnce(
-				metaResponse({
+				chartResponse({
 					symbol: "CORSCACHE",
 					longName: "Cache Fund",
 					currency: "EUR",
@@ -1083,6 +1336,20 @@ describe("Integration Tests", () => {
 				expect(body.description).toContain("Vanguard");
 				expect(body.currency).toBe("EUR");
 				expect(body.price).toBeGreaterThan(0);
+				expect(body.changePercent).toBeTypeOf("number");
+				expect(body.marketTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+				expect(body.firstTradeDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+				expect(body.chartPreviousClose).toBeGreaterThan(0);
+				expect(body.volatility).toBeGreaterThan(0);
+				expect(body.return1y).toBeTypeOf("number");
+				expect(body.maxDrawdown).toBeLessThanOrEqual(0);
+				expect(body.sma50).toBeGreaterThan(0);
+				expect(body.sma200).toBeGreaterThan(0);
+				expect(body.distanceFromSma50).toBeTypeOf("number");
+				expect(body.distanceFromSma200).toBeTypeOf("number");
+				expect(body.fiftyTwoWeekHighDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+				expect(body.fiftyTwoWeekLowDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+				expect(body.averageVolume).toBeGreaterThan(0);
 			},
 		);
 

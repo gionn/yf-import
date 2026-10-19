@@ -16,8 +16,8 @@ securities that Google Finance (via `GOOGLEFINANCE` function) stopped serving.
 =IMPORTDATA("https://yf-import.gionn.net/api/quotes/AAPL")
 ```
 
-Swap `/api/quotes` for `/api/details` to pull the name, currency, price and
-52-week range as separate columns:
+Swap `/api/quotes` for `/api/details` to pull the name, currency, price,
+52-week range and more as separate columns:
 
 ```text
 =IMPORTDATA("https://yf-import.gionn.net/api/details/VWCE.MI")
@@ -33,8 +33,8 @@ viewing an asset page.
 - 📈 Real-time stock prices from Yahoo Finance
 - 🔁 Automatic symbol rewriting for certain exchange prefixes (e.g., `BIT:VWCE`
   → `VWCE.MI`)
-- 📋 Asset details endpoint (description, currency, price, 52-week range) as CSV
-  or JSON
+- 📋 Asset details endpoint (description, currency, price, quote fields and
+  52-week stats) as CSV or JSON
 - 🌐 Global availability with low latency
 - 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
@@ -180,22 +180,51 @@ from Yahoo Finance.
 
 ```bash
 curl http://localhost:8787/api/details/VWCE.MI
-# Returns: VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,172.89,173.98,138.2
+# Returns: VWCE.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,EUR,170.78,173.98,139.19,0.199,170.88,170,30725,ETF,MIL,Europe/Rome,2026-10-19T15:35:11.000Z,2020-01-14,140.32,11.3,19.71,-6.53,168.7798,1.19,158.6474,7.65,2026-10-07,2025-11-21,43990
 ```
 
 The endpoint format is `/api/details/{SYMBOL}` and returns a single CSV row with
-these columns, in order:
+these columns, in order. The first six keep their positions, so existing
+`IMPORTDATA()` sheets keep working.
 
-| # | Column             | Description                                            |
-| - | ------------------ | ------------------------------------------------------ |
-| 1 | `symbol`           | Yahoo Finance symbol (e.g. `VWCE.MI`)                  |
-| 2 | `description`      | Instrument name (`longName`, falling back to `shortName`, then the requested symbol) |
-| 3 | `currency`         | Quote currency (e.g. `EUR`)                            |
-| 4 | `price`            | Current market price                                   |
-| 5 | `fiftyTwoWeekHigh` | 52-week high                                           |
-| 6 | `fiftyTwoWeekLow`  | 52-week low                                            |
+| # | Column | Description |
+| - | ------ | ----------- |
+| 1 | `symbol` | Yahoo Finance symbol (e.g. `VWCE.MI`) |
+| 2 | `description` | Instrument name (`longName`, falling back to `shortName`, then the requested symbol) |
+| 3 | `currency` | Quote currency (e.g. `EUR`) |
+| 4 | `price` | Current market price |
+| 5 | `fiftyTwoWeekHigh` | 52-week high |
+| 6 | `fiftyTwoWeekLow` | 52-week low |
+| 7 | `changePercent` | Today's change in percent points (`0.199` means +0.199%) |
+| 8 | `dayHigh` | Today's high |
+| 9 | `dayLow` | Today's low |
+| 10 | `volume` | Today's volume |
+| 11 | `instrumentType` | Instrument type (e.g. `ETF`) |
+| 12 | `exchangeName` | Exchange code (e.g. `MIL`) |
+| 13 | `exchangeTimezone` | Exchange timezone used by the date columns |
+| 14 | `marketTime` | Last market time, ISO 8601 UTC |
+| 15 | `firstTradeDate` | First trade date, `YYYY-MM-DD` in the exchange timezone |
+| 16 | `chartPreviousClose` | Yahoo's close just before the 1-year window, not yesterday's close |
+| 17 | `volatility` | Annualized volatility from the last year of daily adjusted closes |
+| 18 | `return1y` | Return over the available year of daily adjusted closes |
+| 19 | `maxDrawdown` | Largest peak-to-trough fall over the year |
+| 20 | `sma50` | Mean of the last 50 daily closes |
+| 21 | `distanceFromSma50` | Current price against the 50-day SMA, in percent points |
+| 22 | `sma200` | Mean of the last 200 daily closes |
+| 23 | `distanceFromSma200` | Current price against the 200-day SMA, in percent points |
+| 24 | `fiftyTwoWeekHighDate` | Date of the highest daily high, in the exchange timezone |
+| 25 | `fiftyTwoWeekLowDate` | Date of the lowest daily low, in the exchange timezone |
+| 26 | `averageVolume` | Mean daily volume over the year |
 
-Missing numeric values are returned as empty cells.
+Missing values are returned as empty CSV cells and JSON `null`.
+
+The stats come from the same yearly daily-candle request that supplies the meta
+fields, with no extra upstream call. Returns, drawdown and volatility use
+adjusted closes, so distributing funds do not show a false drop on the ex-date.
+SMAs and their distances use raw closes, which compare directly with `price`.
+Volatility needs at least 60 closes; shorter histories return `null`. The SMAs
+return `null` until 50 or 200 closes are available. Today's partial session is
+included, so intraday figures move until the close.
 
 This is convenient with `IMPORTDATA()`, which parses the row into separate
 columns:
@@ -209,8 +238,11 @@ by sending an `Accept: application/json` header:
 
 ```bash
 curl "http://localhost:8787/api/details/VWCE.MI?format=json"
-# Returns: {"symbol":"VWCE.MI","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","currency":"EUR","price":172.89,"fiftyTwoWeekHigh":173.98,"fiftyTwoWeekLow":138.2}
+# Returns: {"symbol":"VWCE.MI","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","currency":"EUR","price":170.78,"fiftyTwoWeekHigh":173.98,"fiftyTwoWeekLow":139.19,"changePercent":0.199,"dayHigh":170.88,"dayLow":170,"volume":30725,"instrumentType":"ETF","exchangeName":"MIL","exchangeTimezone":"Europe/Rome","marketTime":"2026-10-19T15:35:11.000Z","firstTradeDate":"2020-01-14","chartPreviousClose":140.32,"volatility":11.3,"return1y":19.71,"maxDrawdown":-6.53,"sma50":168.7798,"distanceFromSma50":1.19,"sma200":158.6474,"distanceFromSma200":7.65,"fiftyTwoWeekHighDate":"2026-10-07","fiftyTwoWeekLowDate":"2025-11-21","averageVolume":43990}
 ```
+
+Use `changePercent` for today's move. `chartPreviousClose` is the close from a
+year ago under this range, so it is not a substitute for yesterday's close.
 
 Symbol rewriting applies here too (`BIT:VWCE` → `/api/details/VWCE.MI`), and the
 same edge caching as `/api/quotes` is used.
@@ -218,7 +250,10 @@ same edge caching as `/api/quotes` is used.
 ## Project Structure
 
 - `src/index.ts` - Main worker code with Yahoo Finance API integration
+- `src/cors.ts` - CORS allowlist and per-request response wrapping
+- `src/stats.ts` - Candle math for the details stats
 - `src/index.test.ts` - Automated tests for the worker
+- `src/stats.test.ts` - Unit tests for the candle math
 - `wrangler.toml` - Cloudflare Workers configuration
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` - TypeScript configuration
