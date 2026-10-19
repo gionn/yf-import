@@ -1,4 +1,10 @@
 import { corsGuarded, resolveCors } from "./cors";
+import {
+	computeCandleStats,
+	formatExchangeDate,
+	formatIsoTimestamp,
+	type YahooChartResult,
+} from "./stats";
 
 const USER_AGENTS = [
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -55,16 +61,6 @@ function cacheableResponse(
 	return new Response(body, { status: 200, headers });
 }
 
-interface YahooMeta {
-	symbol?: string;
-	longName?: string;
-	shortName?: string;
-	currency?: string;
-	regularMarketPrice?: number;
-	fiftyTwoWeekHigh?: number;
-	fiftyTwoWeekLow?: number;
-}
-
 interface Details {
 	symbol: string;
 	description: string;
@@ -72,6 +68,26 @@ interface Details {
 	price: number | null;
 	fiftyTwoWeekHigh: number | null;
 	fiftyTwoWeekLow: number | null;
+	changePercent: number | null;
+	dayHigh: number | null;
+	dayLow: number | null;
+	volume: number | null;
+	instrumentType: string | null;
+	exchangeName: string | null;
+	exchangeTimezone: string | null;
+	marketTime: string | null;
+	firstTradeDate: string | null;
+	chartPreviousClose: number | null;
+	volatility: number | null;
+	return1y: number | null;
+	maxDrawdown: number | null;
+	sma50: number | null;
+	distanceFromSma50: number | null;
+	sma200: number | null;
+	distanceFromSma200: number | null;
+	fiftyTwoWeekHighDate: string | null;
+	fiftyTwoWeekLowDate: string | null;
+	averageVolume: number | null;
 }
 
 const DETAILS_FIELDS: (keyof Details)[] = [
@@ -81,13 +97,35 @@ const DETAILS_FIELDS: (keyof Details)[] = [
 	"price",
 	"fiftyTwoWeekHigh",
 	"fiftyTwoWeekLow",
+	"changePercent",
+	"dayHigh",
+	"dayLow",
+	"volume",
+	"instrumentType",
+	"exchangeName",
+	"exchangeTimezone",
+	"marketTime",
+	"firstTradeDate",
+	"chartPreviousClose",
+	"volatility",
+	"return1y",
+	"maxDrawdown",
+	"sma50",
+	"distanceFromSma50",
+	"sma200",
+	"distanceFromSma200",
+	"fiftyTwoWeekHighDate",
+	"fiftyTwoWeekLowDate",
+	"averageVolume",
 ];
 
-async function getYahooMeta(
+async function getYahooChart(
 	symbol: string,
 	fetchTimeoutMs: number,
-): Promise<YahooMeta | null> {
-	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+	range: string,
+	interval: string,
+): Promise<YahooChartResult | null> {
+	const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`;
 
 	const response = await fetch(url, {
 		headers: {
@@ -105,11 +143,16 @@ async function getYahooMeta(
 		throw new Error(`Yahoo Finance API error: ${response.status}`);
 	}
 
-	const data = (await response.json()) as any;
-	return data?.chart?.result?.[0]?.meta ?? null;
+	const data = (await response.json()) as {
+		chart?: { result?: Array<YahooChartResult | null> | null };
+	};
+	return data?.chart?.result?.[0] ?? null;
 }
 
-function buildDetails(meta: YahooMeta, symbol: string): Details {
+function buildDetails(chart: YahooChartResult, symbol: string): Details {
+	const meta = chart.meta ?? {};
+	const stats = computeCandleStats(chart);
+
 	return {
 		symbol: meta.symbol ?? symbol,
 		description: meta.longName || meta.shortName || symbol,
@@ -117,6 +160,20 @@ function buildDetails(meta: YahooMeta, symbol: string): Details {
 		price: meta.regularMarketPrice ?? null,
 		fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
 		fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
+		changePercent: meta.regularMarketChangePercent ?? null,
+		dayHigh: meta.regularMarketDayHigh ?? null,
+		dayLow: meta.regularMarketDayLow ?? null,
+		volume: meta.regularMarketVolume ?? null,
+		instrumentType: meta.instrumentType ?? null,
+		exchangeName: meta.exchangeName ?? null,
+		exchangeTimezone: meta.exchangeTimezoneName ?? null,
+		marketTime: formatIsoTimestamp(meta.regularMarketTime),
+		firstTradeDate: formatExchangeDate(
+			meta.firstTradeDate,
+			meta.exchangeTimezoneName,
+		),
+		chartPreviousClose: meta.chartPreviousClose ?? null,
+		...stats,
 	};
 }
 
@@ -128,8 +185,8 @@ function csvEscape(value: unknown): string {
 	return text;
 }
 
-function detailsToCsv(meta: YahooMeta, symbol: string): string {
-	const details = buildDetails(meta, symbol);
+function detailsToCsv(chart: YahooChartResult, symbol: string): string {
+	const details = buildDetails(chart, symbol);
 	return DETAILS_FIELDS.map((field) => csvEscape(details[field])).join(",");
 }
 
@@ -169,8 +226,10 @@ async function tryRewriteExchangeSymbol(
 
 	if (!candidate) return null;
 
-	const meta = await getYahooMeta(candidate, fetchTimeoutMs);
-	if (meta === null) return null;
+	const chart = await getYahooChart(candidate, fetchTimeoutMs, "1d", "1m");
+	if (chart === null) return null;
+	const meta = chart.meta;
+	if (!meta) return null;
 	// `/api/quotes` needs a usable price, so a metadata-only candidate must
 	// fall through to the 404 path rather than redirect to a dead symbol.
 	// `/api/details` accepts metadata without a price.
@@ -226,8 +285,8 @@ export default {
 					if (cached) return cached;
 
 					// Cache miss - fetch from Yahoo Finance
-					const meta = await getYahooMeta(symbol, fetchTimeoutMs);
-					const price = meta?.regularMarketPrice ?? null;
+					const chart = await getYahooChart(symbol, fetchTimeoutMs, "1d", "1m");
+					const price = chart?.meta?.regularMarketPrice ?? null;
 					if (price === null) {
 						return noStoreResponse("Price not available", 404);
 					}
@@ -288,8 +347,8 @@ export default {
 					if (cached) return cached;
 
 					// Cache miss - fetch from Yahoo Finance
-					const meta = await getYahooMeta(symbol, fetchTimeoutMs);
-					if (meta === null) {
+					const chart = await getYahooChart(symbol, fetchTimeoutMs, "1y", "1d");
+					if (chart === null) {
 						return noStoreResponse(
 							format === "json"
 								? JSON.stringify({ error: "Symbol not found" })
@@ -301,8 +360,8 @@ export default {
 
 					const body =
 						format === "json"
-							? JSON.stringify(buildDetails(meta, symbol))
-							: detailsToCsv(meta, symbol);
+							? JSON.stringify(buildDetails(chart, symbol))
+							: detailsToCsv(chart, symbol);
 
 					// Vary on Accept: the format is content-negotiated.
 					const response = cacheableResponse(
