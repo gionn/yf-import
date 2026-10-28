@@ -1437,34 +1437,32 @@ describe("Search API", () => {
 			expect(init.headers["User-Agent"]).not.toBe("");
 		});
 
-		it("should default and clamp the result count", async () => {
-			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
-			await worker.fetch(
-				new Request("http://localhost/api/search?q=COUNTDEFAULT"),
+		it("should ignore a count parameter and share one cache entry", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const response1 = await worker.fetch(
+				new Request("http://localhost/api/search?q=COUNTQ&count=3"),
 				env,
 				ctx,
 			);
+			expect(response1.status).toBe(200);
+			expect((globalThis.fetch as any).mock.calls[0][0]).toContain(
+				"quotesCount=10",
+			);
+			await waitOnExecutionContext(ctx);
 
-			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
-			await worker.fetch(
-				new Request("http://localhost/api/search?q=COUNTMAX&count=999"),
+			// The count never reaches the cache key, so the second request is
+			// the same entry even with a different value.
+			const response2 = await worker.fetch(
+				new Request("http://localhost/api/search?q=countq&count=50"),
 				env,
 				ctx,
 			);
-
-			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
-			await worker.fetch(
-				new Request("http://localhost/api/search?q=COUNTJUNK&count=abc"),
-				env,
-				ctx,
-			);
-
-			const [first, second, third] = (globalThis.fetch as any).mock.calls.map(
-				(call: unknown[]) => call[0],
-			);
-			expect(first).toContain("quotesCount=10");
-			expect(second).toContain("quotesCount=20");
-			expect(third).toContain("quotesCount=10");
+			expect(response2.status).toBe(200);
+			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
 		});
 
 		it("should split a US symbol into ticker and empty market", async () => {

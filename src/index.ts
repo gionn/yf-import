@@ -208,8 +208,8 @@ function resolveFormat(request: Request, url: URL): "csv" | "json" {
 }
 
 const YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search";
-const SEARCH_DEFAULT_COUNT = 10;
-const SEARCH_MAX_COUNT = 20;
+// Yahoo truncates the quotes array at 7 whatever this asks for.
+const SEARCH_QUOTES_COUNT = 10;
 const SEARCH_MAX_QUERY_LENGTH = 64;
 
 /** A symbol suggestion as returned by the search route. */
@@ -269,20 +269,13 @@ function collapseSpaces(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
-function resolveSearchCount(value: string | null): number {
-	const parsed = Number.parseInt(value ?? "", 10);
-	if (!Number.isFinite(parsed) || parsed < 1) return SEARCH_DEFAULT_COUNT;
-	return Math.min(parsed, SEARCH_MAX_COUNT);
-}
-
 async function getYahooSearch(
 	query: string,
-	count: number,
 	fetchTimeoutMs: number,
 ): Promise<YahooSearchQuote[]> {
 	const params = new URLSearchParams({
 		q: query,
-		quotesCount: count.toString(),
+		quotesCount: SEARCH_QUOTES_COUNT.toString(),
 		newsCount: "0",
 		listsCount: "0",
 		enableFuzzyQuery: "false",
@@ -521,7 +514,6 @@ export default {
 
 			const rawQuery = collapseSpaces(url.searchParams.get("q") ?? "");
 			const query = rawQuery.toLowerCase();
-			const count = resolveSearchCount(url.searchParams.get("count"));
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
 			const format = resolveFormat(request, url);
@@ -531,7 +523,7 @@ export default {
 			// The normalized query is the cache key, so `VWCE` and `vwce` share
 			// one upstream call and one entry.
 			const cacheKey = new Request(
-				`${url.origin}/api/search?q=${encodeURIComponent(query)}&count=${count}&format=${format}`,
+				`${url.origin}/api/search?q=${encodeURIComponent(query)}&format=${format}`,
 				{ method: "GET" },
 			);
 			const cache = caches.default;
@@ -552,7 +544,7 @@ export default {
 					const cached = await cache.match(cacheKey);
 					if (cached) return cached;
 
-					const quotes = await getYahooSearch(rawQuery, count, fetchTimeoutMs);
+					const quotes = await getYahooSearch(rawQuery, fetchTimeoutMs);
 					const seen = new Set<string>();
 					const results: SearchResult[] = [];
 					for (const quote of quotes) {

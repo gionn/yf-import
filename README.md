@@ -259,16 +259,16 @@ curl "http://localhost:8787/api/search?q=vwce"
 ```
 
 `/api/search` is the same lookup Yahoo Finance runs in its own search bar. It
-takes a `q` query string and an optional `count` (default 10, clamped to 20),
-and returns no news, lists or fuzzy matches. The response is CSV with a header
-row and one row per result, so `IMPORTDATA()` parses it into a table:
+takes a `q` query string and returns no news, lists or fuzzy matches. The
+response is CSV with a header row and one row per result, so `IMPORTDATA()`
+parses it into a table:
 
 ```text
 =IMPORTDATA("https://yf-import.gionn.net/api/search?q=vwce")
 ```
 
-Yahoo truncates the quotes array at 7 per query, so a larger `count` changes
-nothing today.
+Yahoo truncates the quotes array at 7 per query, so the route always asks for
+10 and returns what comes back.
 
 | Column | Description |
 | ------ | ----------- |
