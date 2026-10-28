@@ -48,6 +48,17 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 - **CORS**: Every route echoes a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always sends `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors` in `src/cors.ts`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors. `corsGuarded` takes an `errorResponse(message)` builder so each route emits failures in its own format.
 - **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
 
+## Docs
+
+- `README.md` speaks to callers: endpoints, parameters, response fields, status
+  codes, and the limits they can observe.
+- `AGENTS.md` speaks to maintainers: why the code is shaped this way, including
+  upstream request parameters, cache-key rules and helper layout.
+- Keep implementation details out of the README. "A search returns at most 7
+  results" belongs there; "the route asks Yahoo for 10" does not.
+- Only advertise `IMPORTDATA()` for endpoints whose data is worth importing.
+  A symbol lookup is not one; point at the endpoint that returns the data.
+
 ## Testing
 
 - Uses `@cloudflare/vitest-pool-workers` for Cloudflare Workers runtime compatibility
