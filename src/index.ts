@@ -208,8 +208,8 @@ function resolveFormat(request: Request, url: URL): "csv" | "json" {
 }
 
 const YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search";
-// Yahoo caps the quotes array at 7 per response no matter what this asks for.
-const SEARCH_QUOTES_COUNT = 10;
+const SEARCH_DEFAULT_COUNT = 10;
+const SEARCH_MAX_COUNT = 20;
 const SEARCH_MAX_QUERY_LENGTH = 64;
 
 /** A symbol suggestion as returned by the search route. */
@@ -269,13 +269,20 @@ function collapseSpaces(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
+function resolveSearchCount(value: string | null): number {
+	const parsed = Number.parseInt(value ?? "", 10);
+	if (!Number.isFinite(parsed) || parsed < 1) return SEARCH_DEFAULT_COUNT;
+	return Math.min(parsed, SEARCH_MAX_COUNT);
+}
+
 async function getYahooSearch(
 	query: string,
+	count: number,
 	fetchTimeoutMs: number,
 ): Promise<YahooSearchQuote[]> {
 	const params = new URLSearchParams({
 		q: query,
-		quotesCount: SEARCH_QUOTES_COUNT.toString(),
+		quotesCount: count.toString(),
 		newsCount: "0",
 		listsCount: "0",
 		enableFuzzyQuery: "false",
@@ -295,11 +302,33 @@ async function getYahooSearch(
 	return Array.isArray(data?.quotes) ? (data.quotes as YahooSearchQuote[]) : [];
 }
 
-function searchError(message: string, status: number): Response {
+const SEARCH_FIELDS: (keyof SearchResult)[] = [
+	"symbol",
+	"ticker",
+	"market",
+	"description",
+	"quoteType",
+	"exchange",
+	"exchangeDisplay",
+];
+
+/** Header row plus one CSV row per result, in `SEARCH_FIELDS` order. */
+function searchToCsv(results: SearchResult[]): string {
+	const rows = results.map((result) =>
+		SEARCH_FIELDS.map((field) => csvEscape(result[field])).join(","),
+	);
+	return [SEARCH_FIELDS.join(","), ...rows].join("\n");
+}
+
+function searchError(
+	message: string,
+	status: number,
+	format: "csv" | "json",
+): Response {
 	return noStoreResponse(
-		JSON.stringify({ error: message }),
+		format === "json" ? JSON.stringify({ error: message }) : message,
 		status,
-		"application/json",
+		format === "json" ? "application/json" : "text/plain",
 	);
 }
 
@@ -492,13 +521,17 @@ export default {
 
 			const rawQuery = collapseSpaces(url.searchParams.get("q") ?? "");
 			const query = rawQuery.toLowerCase();
+			const count = resolveSearchCount(url.searchParams.get("count"));
 			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
 			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
+			const format = resolveFormat(request, url);
+			const contentType =
+				format === "json" ? "application/json" : "text/csv; charset=utf-8";
 
 			// The normalized query is the cache key, so `VWCE` and `vwce` share
 			// one upstream call and one entry.
 			const cacheKey = new Request(
-				`${url.origin}/api/search?q=${encodeURIComponent(query)}`,
+				`${url.origin}/api/search?q=${encodeURIComponent(query)}&count=${count}&format=${format}`,
 				{ method: "GET" },
 			);
 			const cache = caches.default;
@@ -506,19 +539,20 @@ export default {
 			return corsGuarded(
 				async () => {
 					if (!query) {
-						return searchError("Missing q parameter", 400);
+						return searchError("Missing q parameter", 400, format);
 					}
 					if (rawQuery.length > SEARCH_MAX_QUERY_LENGTH) {
 						return searchError(
 							`Query too long (max ${SEARCH_MAX_QUERY_LENGTH} characters)`,
 							400,
+							format,
 						);
 					}
 
 					const cached = await cache.match(cacheKey);
 					if (cached) return cached;
 
-					const quotes = await getYahooSearch(rawQuery, fetchTimeoutMs);
+					const quotes = await getYahooSearch(rawQuery, count, fetchTimeoutMs);
 					const seen = new Set<string>();
 					const results: SearchResult[] = [];
 					for (const quote of quotes) {
@@ -528,10 +562,15 @@ export default {
 						results.push(result);
 					}
 
+					const body =
+						format === "json"
+							? JSON.stringify({ query, results })
+							: searchToCsv(results);
 					const response = cacheableResponse(
-						JSON.stringify({ query, results }),
-						"application/json",
+						body,
+						contentType,
 						cacheTTL,
+						"Accept",
 					);
 
 					// Cache the plain response (CORS is added per request).
@@ -541,7 +580,7 @@ export default {
 				},
 				allowedOrigin,
 				"search",
-				(message) => searchError(message, 500),
+				(message) => searchError(message, 500, format),
 			);
 		}
 

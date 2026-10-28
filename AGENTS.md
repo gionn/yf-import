@@ -23,16 +23,19 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 - **Route**: `GET /api/search?q=…&count=…` — proxies Yahoo's
   `v1/finance/search` (the endpoint behind its own search bar; `getYahooSearch`
   sends no news, lists or fuzzy matches) and returns
-  `{ query, results: [{ symbol, ticker, market, description, quoteType, exchange, exchangeDisplay }] }`.
+  `{ query, results: [...] }` in JSON mode and a header row plus one row per
+  result in CSV mode (`symbol,ticker,market,description,quoteType,exchange,exchangeDisplay`).
+  Format comes from `resolveFormat`, so CSV is the default and `?format=json` or
+  `Accept: application/json` selects JSON; errors follow the same split.
   `ticker`/`market` split the resolved symbol the way the app's catalog models it
   (no suffix = US, empty market). Non-Yahoo hits and duplicate symbols are
-  dropped; `q` is required and capped at 64 characters (400 otherwise), and
-  upstream failures are JSON 500s. Yahoo truncates `quotes` at 7 regardless of
-  `quotesCount`, so the route always requests 10 and exposes no count knob.
-  The cache key is the normalized `q` alone.
+  dropped; `q` is required and capped at 64 characters (400 otherwise), `count`
+  defaults to 10 and is clamped to 20, and upstream failures are 500s. Yahoo
+  truncates `quotes` at 7 regardless of `quotesCount`, so a larger count changes
+  nothing today. The cache key is the normalized `q`, the count and the format.
 - The quote and details routes share `getYahooChart(symbol, fetchTimeoutMs, range, interval)` (returns `chart.result[0]` or `null` on 404; throws otherwise). `/api/quotes` requests `1d`/`1m` and reads `meta.regularMarketPrice`. `/api/details` requests `1y`/`1d`; `buildDetails` maps `meta` and `computeCandleStats(chart)` into the response.
 - **Stats**: `src/stats.ts` holds the pure candle math (annualized volatility, 1-year return, max drawdown, 50/200-day SMAs and distances, 52-week extreme dates, average volume) plus date formatting. Returns, drawdown and volatility use `adjclose`; SMAs and distances use `close`. Volatility needs 60 valid closes. Today's partial bar is included.
-- **Caching**: Uses Cloudflare's `caches.default` with a cache key derived from the URL path (query params stripped, except the `format` discriminator on `/api/details` and the normalized `q` on `/api/search`, where casing and repeated spaces are ignored). Cache TTL configurable via `CACHE_TTL` env var (default 300s).
+- **Caching**: Uses Cloudflare's `caches.default` with a cache key derived from the URL path (query params stripped, except the `format` discriminator on `/api/details` and the normalized `q`, `count` and `format` on `/api/search`, where casing and repeated spaces are ignored). Cache TTL configurable via `CACHE_TTL` env var (default 300s).
 - **Symbol rewriting** (applied to the quote and details routes before fetching):
   - `BIT:SYMBOL` → probes `SYMBOL.MI`, redirects 301 if it exists
   - `SYMBOL.FR` → probes `SYMBOL.PA`, redirects 301 if it exists

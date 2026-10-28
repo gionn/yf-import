@@ -36,7 +36,7 @@ viewing an asset page.
 - 📋 Asset details endpoint (description, currency, price, quote fields and
   52-week stats) as CSV or JSON
 - 🔎 Symbol search endpoint for autocomplete, returning ticker, market suffix
-  and exchange as JSON
+  and exchange as CSV or JSON
 - 🌐 Global availability with low latency
 - 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
@@ -253,17 +253,25 @@ same edge caching as `/api/quotes` is used.
 
 ```bash
 curl "http://localhost:8787/api/search?q=vwce"
-# Returns: {"query":"vwce","results":[{"symbol":"VWCE.DE","ticker":"VWCE","market":".DE","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","quoteType":"ETF","exchange":"GER","exchangeDisplay":"XETRA"}, ...]}
+# Returns:
+# symbol,ticker,market,description,quoteType,exchange,exchangeDisplay
+# VWCE.DE,VWCE,.DE,Vanguard FTSE All-World UCITS ETF USD Accumulation,ETF,GER,XETRA
 ```
 
-This is the same lookup Yahoo Finance runs in its own search bar: `/api/search`
-takes a `q` query string and returns JSON with no news, lists or fuzzy matches.
-Yahoo itself caps the quotes array at 7 per query — a larger `quotesCount` is
-silently truncated — so the route always asks for 10 and returns what comes
-back.
+`/api/search` is the same lookup Yahoo Finance runs in its own search bar. It
+takes a `q` query string and an optional `count` (default 10, clamped to 20),
+and returns no news, lists or fuzzy matches. The response is CSV with a header
+row and one row per result, so `IMPORTDATA()` parses it into a table:
 
-| Field | Description |
-| ----- | ----------- |
+```text
+=IMPORTDATA("https://yf-import.gionn.net/api/search?q=vwce")
+```
+
+Yahoo truncates the quotes array at 7 per query, so a larger `count` changes
+nothing today.
+
+| Column | Description |
+| ------ | ----------- |
 | `symbol` | Yahoo Finance symbol (e.g. `VWCE.MI`) |
 | `ticker` | Symbol without the market suffix (e.g. `VWCE`) |
 | `market` | Market suffix including the dot (e.g. `.MI`), empty for US listings |
@@ -272,11 +280,20 @@ back.
 | `exchange` | Exchange code (e.g. `MIL`) |
 | `exchangeDisplay` | Exchange name (e.g. `Milan`) |
 
+For programmatic use, request JSON either with the `format=json` query param or
+by sending an `Accept: application/json` header:
+
+```bash
+curl "http://localhost:8787/api/search?q=vwce&format=json"
+# Returns: {"query":"vwce","results":[{"symbol":"VWCE.DE","ticker":"VWCE","market":".DE","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","quoteType":"ETF","exchange":"GER","exchangeDisplay":"XETRA"}]}
+```
+
 Results keep Yahoo's ranking. Non-Yahoo hits (ISIN/CUSIP lookups) are dropped,
 and one symbol appears once. Missing `q`, a blank query or one longer than 64
-characters is a `400`; an upstream failure is a `500`, both as
+characters is a `400`; an upstream failure is a `500`. Errors follow the
+requested format, so CSV mode gets plain text and JSON mode gets
 `{"error": "..."}`. Casing and repeated spaces are ignored for caching, so
-`VWCE` and `vwce` share one entry.
+`VWCE` and `vwce` share one entry, and CSV and JSON are cached separately.
 
 Cross-listed funds come back once per listing, so the caller usually wants to
 sort or filter by `market`/`exchange`. A result carries no currency or price;
