@@ -20,10 +20,23 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 
 - **Route**: `GET /api/quotes/:symbol` — fetches a numeric price from Yahoo Finance public chart API and returns it as plain text (e.g. `150.25`)
 - **Route**: `GET /api/details/:symbol` — returns one CSV row (26 columns: the original `symbol,description,currency,price,fiftyTwoWeekHigh,fiftyTwoWeekLow`, then quote fields and 52-week stats) or JSON via `?format=json` / `Accept: application/json`. `description` falls back `longName` → `shortName` → symbol; missing values are empty cells / `null`. CSV and JSON are cached under separate keys (format is part of the cache key).
-- Both routes share `getYahooChart(symbol, fetchTimeoutMs, range, interval)` (returns `chart.result[0]` or `null` on 404; throws otherwise). `/api/quotes` requests `1d`/`1m` and reads `meta.regularMarketPrice`. `/api/details` requests `1y`/`1d`; `buildDetails` maps `meta` and `computeCandleStats(chart)` into the response.
+- **Route**: `GET /api/search?q=…&count=…` — proxies Yahoo's
+  `v1/finance/search` (the endpoint behind its own search bar; `getYahooSearch`
+  sends no news, lists or fuzzy matches) and returns
+  `{ query, results: [...] }` in JSON mode and a header row plus one row per
+  result in CSV mode (`symbol,ticker,market,description,quoteType,exchange,exchangeDisplay`).
+  Format comes from `resolveFormat`, so CSV is the default and `?format=json` or
+  `Accept: application/json` selects JSON; errors follow the same split.
+  `ticker`/`market` split the resolved symbol the way the app's catalog models it
+  (no suffix = US, empty market). Non-Yahoo hits and duplicate symbols are
+  dropped; `q` is required and capped at 64 characters (400 otherwise), and
+  upstream failures are 500s. Yahoo truncates `quotes` at 7 regardless of
+  `quotesCount`, so the route always requests 10 and exposes no count knob. The
+  cache key is the normalized `q` and the format.
+- The quote and details routes share `getYahooChart(symbol, fetchTimeoutMs, range, interval)` (returns `chart.result[0]` or `null` on 404; throws otherwise). `/api/quotes` requests `1d`/`1m` and reads `meta.regularMarketPrice`. `/api/details` requests `1y`/`1d`; `buildDetails` maps `meta` and `computeCandleStats(chart)` into the response.
 - **Stats**: `src/stats.ts` holds the pure candle math (annualized volatility, 1-year return, max drawdown, 50/200-day SMAs and distances, 52-week extreme dates, average volume) plus date formatting. Returns, drawdown and volatility use `adjclose`; SMAs and distances use `close`. Volatility needs 60 valid closes. Today's partial bar is included.
-- **Caching**: Uses Cloudflare's `caches.default` with a cache key derived from the URL path (query params stripped, except the `format` discriminator on `/api/details`). Cache TTL configurable via `CACHE_TTL` env var (default 300s).
-- **Symbol rewriting** (applied to both routes before fetching):
+- **Caching**: Uses Cloudflare's `caches.default` with a cache key derived from the URL path (query params stripped, except the `format` discriminator on `/api/details` and the normalized `q` and `format` on `/api/search`, where casing and repeated spaces are ignored). Cache TTL configurable via `CACHE_TTL` env var (default 300s).
+- **Symbol rewriting** (applied to the quote and details routes before fetching):
   - `BIT:SYMBOL` → probes `SYMBOL.MI`, redirects 301 if it exists
   - `SYMBOL.FR` → probes `SYMBOL.PA`, redirects 301 if it exists
   - `/api/quotes` only redirects when the candidate has a current price;
@@ -32,8 +45,19 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
   - If the rewritten symbol doesn't exist, falls through to normal fetch of original symbol
   - The redirect targets the same route family (`/api/quotes` or `/api/details`)
 - **Root redirect**: `GET /` redirects to `ROOT_REDIRECT_URL` if configured (validated)
-- **CORS**: Both routes echo a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always send `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors` in `src/cors.ts`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors. `corsGuarded` takes an `errorResponse(message)` builder so each route emits failures in its own format.
+- **CORS**: Every route echoes a request's `Origin` in `Access-Control-Allow-Origin` only on an exact match with `ALLOWED_ORIGINS`, and always sends `Vary: Origin` (merged with the details route's `Vary: Accept`). The list is never disclosed. Headers are applied per-request after cache lookup, keeping the cached body origin-agnostic; `OPTIONS` preflight returns 204 with the requested methods/headers. Shared via `resolveCors`/`corsPreflightResponse`/`withCors` in `src/cors.ts`; `corsGuarded` runs each route body and adds CORS to every outcome, including errors. `corsGuarded` takes an `errorResponse(message)` builder so each route emits failures in its own format.
 - **Env vars** (set in wrangler.toml [vars]): `CACHE_TTL`, `ROOT_REDIRECT_URL`, `ALLOWED_ORIGINS`
+
+## Docs
+
+- `README.md` speaks to callers: endpoints, parameters, response fields, status
+  codes, and the limits they can observe.
+- `AGENTS.md` speaks to maintainers: why the code is shaped this way, including
+  upstream request parameters, cache-key rules and helper layout.
+- Keep implementation details out of the README. "A search returns at most 7
+  results" belongs there; "the route asks Yahoo for 10" does not.
+- Only advertise `IMPORTDATA()` for endpoints whose data is worth importing.
+  A symbol lookup is not one; point at the endpoint that returns the data.
 
 ## Testing
 

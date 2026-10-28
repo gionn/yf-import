@@ -35,6 +35,8 @@ viewing an asset page.
   → `VWCE.MI`)
 - 📋 Asset details endpoint (description, currency, price, quote fields and
   52-week stats) as CSV or JSON
+- 🔎 Symbol search endpoint for autocomplete, returning ticker, market suffix
+  and exchange as CSV or JSON
 - 🌐 Global availability with low latency
 - 💰 Cloudflare Free tier: 100,000 requests/day (global)
 - 🔒 No API key required
@@ -247,6 +249,50 @@ year ago under this range, so it is not a substitute for yesterday's close.
 Symbol rewriting applies here too (`BIT:VWCE` → `/api/details/VWCE.MI`), and the
 same edge caching as `/api/quotes` is used.
 
+### Search for Symbols
+
+```bash
+curl "http://localhost:8787/api/search?q=vwce"
+# Returns:
+# symbol,ticker,market,description,quoteType,exchange,exchangeDisplay
+# VWCE.DE,VWCE,.DE,Vanguard FTSE All-World UCITS ETF USD Accumulation,ETF,GER,XETRA
+```
+
+`/api/search` is the same lookup Yahoo Finance runs in its own search bar. It
+takes a `q` query string and returns no news, lists or fuzzy matches. The
+response is CSV with a header row and one row per result, matching
+`/api/details`, with JSON available on request.
+
+A search returns at most 7 results.
+
+| Column | Description |
+| ------ | ----------- |
+| `symbol` | Yahoo Finance symbol (e.g. `VWCE.MI`) |
+| `ticker` | Symbol without the market suffix (e.g. `VWCE`) |
+| `market` | Market suffix including the dot (e.g. `.MI`), empty for US listings |
+| `description` | Name (`longName`, falling back to `shortName`) |
+| `quoteType` | Instrument type (e.g. `ETF`, `EQUITY`) |
+| `exchange` | Exchange code (e.g. `MIL`) |
+| `exchangeDisplay` | Exchange name (e.g. `Milan`) |
+
+For programmatic use, request JSON either with the `format=json` query param or
+by sending an `Accept: application/json` header:
+
+```bash
+curl "http://localhost:8787/api/search?q=vwce&format=json"
+# Returns: {"query":"vwce","results":[{"symbol":"VWCE.DE","ticker":"VWCE","market":".DE","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","quoteType":"ETF","exchange":"GER","exchangeDisplay":"XETRA"}]}
+```
+
+Results keep Yahoo's ranking. Only Yahoo Finance symbols come back, so ISIN and
+CUSIP lookups are left out, and each symbol appears once. A missing, blank or
+over-64-character `q` is a `400`; other failures are `500`s in the requested
+format. Casing and repeated spaces do not matter.
+
+Cross-listed funds come back once per listing, so the caller usually wants to
+sort or filter by `market`/`exchange`. A result carries no currency or price,
+so this is a lookup, not a data source: import the chosen symbol from
+`/api/details/{symbol}`.
+
 ## Project Structure
 
 - `src/index.ts` - Main worker code with Yahoo Finance API integration
@@ -305,8 +351,8 @@ A request's `Origin` is echoed in `Access-Control-Allow-Origin` only on an exact
 match; other origins still get the data but no header, so the browser blocks it.
 `Vary: Origin` is always sent so caches stay correct, and `OPTIONS` preflights
 from allowed origins return `204` with the requested methods and headers. This
-applies to both `/api/quotes` and `/api/details`; the details response varies on
-both `Accept` and `Origin`.
+applies to every route (`/api/quotes`, `/api/details`, `/api/search`); the
+details response varies on both `Accept` and `Origin`.
 
 The list is never disclosed — only the caller's own origin is echoed back.
 

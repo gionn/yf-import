@@ -1289,6 +1289,456 @@ describe("Details API", () => {
 	});
 });
 
+describe("Search API", () => {
+	interface MockQuote {
+		symbol?: string;
+		longname?: string;
+		shortname?: string;
+		quoteType?: string;
+		exchange?: string;
+		exchDisp?: string;
+		isYahooFinance?: boolean;
+	}
+
+	const searchResponse = (quotes: MockQuote[]) => ({
+		ok: true,
+		json: async () => ({ quotes }),
+	});
+
+	const vwceQuote: MockQuote = {
+		symbol: "VWCE.MI",
+		longname: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
+		shortname: "Vanguard Ftse All-World Ucits E",
+		quoteType: "ETF",
+		exchange: "MIL",
+		exchDisp: "Milan",
+		isYahooFinance: true,
+	};
+
+	const csvHeader =
+		"symbol,ticker,market,description,quoteType,exchange,exchangeDisplay";
+	const vwceCsvRow =
+		"VWCE.MI,VWCE,.MI,Vanguard FTSE All-World UCITS ETF USD Accumulation,ETF,MIL,Milan";
+
+	describe("GET /api/search", () => {
+		let ctx: ExecutionContext;
+
+		beforeEach(() => {
+			vi.stubGlobal("fetch", vi.fn());
+			ctx = createExecutionContext();
+		});
+
+		afterEach(async () => {
+			// Wait for scheduled cache writes before restoring globals
+			await waitOnExecutionContext(ctx);
+			vi.unstubAllGlobals();
+		});
+
+		it("should return one CSV row per result by default", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const request = new Request("http://localhost/api/search?q=CSVQ");
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+			expect(response.headers.get("Vary")).toBe("Accept, Origin");
+			expect(response.headers.get("Cache-Control")).toContain("max-age=");
+			expect(await response.text()).toBe(`${csvHeader}\n${vwceCsvRow}`);
+		});
+
+		it("should return mapped JSON when JSON is requested", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const request = new Request(
+				"http://localhost/api/search?q=MAPPEDQ&format=json",
+			);
+			const response = await worker.fetch(request, env, ctx);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(response.headers.get("Vary")).toBe("Accept, Origin");
+			expect(await response.json()).toEqual({
+				query: "mappedq",
+				results: [
+					{
+						symbol: "VWCE.MI",
+						ticker: "VWCE",
+						market: ".MI",
+						description: "Vanguard FTSE All-World UCITS ETF USD Accumulation",
+						quoteType: "ETF",
+						exchange: "MIL",
+						exchangeDisplay: "Milan",
+					},
+				],
+			});
+		});
+
+		it("should negotiate JSON from the Accept header", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=ACCEPTQ", {
+					headers: { Accept: "application/json" },
+				}),
+				env,
+				ctx,
+			);
+
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+		});
+
+		it("should escape commas and quotes in CSV fields", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([
+					{
+						symbol: "ESCAPE.MI",
+						longname: 'Fund, "quoted" name',
+						isYahooFinance: true,
+					},
+				]),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=ESCAPEQ"),
+				env,
+				ctx,
+			);
+
+			expect(await response.text()).toBe(
+				`${csvHeader}\nESCAPE.MI,ESCAPE,.MI,"Fund, ""quoted"" name",,,`,
+			);
+		});
+
+		it("should query Yahoo's search endpoint without news or lists", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
+
+			await worker.fetch(
+				new Request("http://localhost/api/search?q=MOCKQ"),
+				env,
+				ctx,
+			);
+
+			const [requestedUrl, init] = (globalThis.fetch as any).mock.calls[0];
+			expect(requestedUrl).toContain("/v1/finance/search");
+			expect(requestedUrl).toContain("q=MOCKQ");
+			expect(requestedUrl).toContain("quotesCount=10");
+			expect(requestedUrl).toContain("newsCount=0");
+			expect(requestedUrl).toContain("listsCount=0");
+			expect(init.headers["User-Agent"]).toBeTypeOf("string");
+			expect(init.headers["User-Agent"]).not.toBe("");
+		});
+
+		it("should ignore a count parameter and share one cache entry", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const response1 = await worker.fetch(
+				new Request("http://localhost/api/search?q=COUNTQ&count=3"),
+				env,
+				ctx,
+			);
+			expect(response1.status).toBe(200);
+			expect((globalThis.fetch as any).mock.calls[0][0]).toContain(
+				"quotesCount=10",
+			);
+			await waitOnExecutionContext(ctx);
+
+			// The count never reaches the cache key, so the second request is
+			// the same entry even with a different value.
+			const response2 = await worker.fetch(
+				new Request("http://localhost/api/search?q=countq&count=50"),
+				env,
+				ctx,
+			);
+			expect(response2.status).toBe(200);
+			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+		});
+
+		it("should split a US symbol into ticker and empty market", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([
+					{
+						symbol: "AAPL",
+						shortname: "Apple Inc.",
+						quoteType: "EQUITY",
+						exchange: "NMS",
+						exchDisp: "NASDAQ",
+						isYahooFinance: true,
+					},
+				]),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=USQ&format=json"),
+				env,
+				ctx,
+			);
+
+			const body = (await response.json()) as {
+				results: Array<{ ticker: string; market: string }>;
+			};
+			expect(body.results[0].ticker).toBe("AAPL");
+			expect(body.results[0].market).toBe("");
+		});
+
+		it("should fall back from longname to shortname", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([
+					{
+						symbol: "SHORT.MI",
+						shortname: "Short Name Only",
+						isYahooFinance: true,
+					},
+				]),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=SHORTQ&format=json"),
+				env,
+				ctx,
+			);
+
+			const body = (await response.json()) as {
+				results: Array<{ description: string }>;
+			};
+			expect(body.results[0].description).toBe("Short Name Only");
+		});
+
+		it("should drop non-Yahoo and symbol-less entries", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([
+					{ symbol: "US0378331005", isYahooFinance: false },
+					{ exchange: "NMS", quoteType: "EQUITY" },
+					vwceQuote,
+				]),
+			);
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=FILTERQ&format=json"),
+				env,
+				ctx,
+			);
+
+			const body = (await response.json()) as {
+				results: Array<{ symbol: string }>;
+			};
+			expect(body.results.map((result) => result.symbol)).toEqual(["VWCE.MI"]);
+		});
+
+		it("should return an empty result list when Yahoo has no matches", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=EMPTYQ&format=json"),
+				env,
+				ctx,
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({
+				query: "emptyq",
+				results: [],
+			});
+		});
+
+		it("should normalize the query to share one cache entry", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+
+			const response1 = await worker.fetch(
+				new Request("http://localhost/api/search?q=CACHEQ&format=json"),
+				env,
+				ctx,
+			);
+			expect(response1.status).toBe(200);
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+			// The cache write is scheduled in waitUntil; drain it before the
+			// second request or the read races the write.
+			await waitOnExecutionContext(ctx);
+
+			const response2 = await worker.fetch(
+				new Request("http://localhost/api/search?q=cacheq&format=json"),
+				env,
+				ctx,
+			);
+			expect(response2.status).toBe(200);
+			expect(response2.headers.get("CF-Cache-Status")).toBe("HIT");
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+		});
+
+		it("should cache CSV and JSON independently", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+			const csvResponse = await worker.fetch(
+				new Request("http://localhost/api/search?q=BOTHQ"),
+				env,
+				ctx,
+			);
+			expect(csvResponse.headers.get("Content-Type")).toBe(
+				"text/csv; charset=utf-8",
+			);
+			await waitOnExecutionContext(ctx);
+
+			(globalThis.fetch as any).mockResolvedValueOnce(
+				searchResponse([vwceQuote]),
+			);
+			const jsonResponse = await worker.fetch(
+				new Request("http://localhost/api/search?q=BOTHQ&format=json"),
+				env,
+				ctx,
+			);
+			expect(jsonResponse.headers.get("Content-Type")).toBe("application/json");
+			expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+		});
+
+		it("should reject a missing, blank or oversized query", async () => {
+			for (const path of [
+				"/api/search",
+				"/api/search?q=%20%20",
+				`/api/search?q=${"a".repeat(65)}`,
+			]) {
+				const response = await worker.fetch(
+					new Request(`http://localhost${path}`),
+					env,
+					ctx,
+				);
+
+				expect(response.status).toBe(400);
+				expect(response.headers.get("Content-Type")).toBe("text/plain");
+				expect(response.headers.get("Cache-Control")).toBe("no-store");
+			}
+
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		});
+
+		it("should return a JSON 400 when JSON is requested", async () => {
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?format=json"),
+				env,
+				ctx,
+			);
+
+			expect(response.status).toBe(400);
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+			expect(await response.json()).toEqual({
+				error: "Missing q parameter",
+			});
+		});
+
+		it("should return a 500 in the requested format", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 429,
+			});
+			const csvResponse = await worker.fetch(
+				new Request("http://localhost/api/search?q=FAILQ"),
+				env,
+				ctx,
+			);
+
+			expect(csvResponse.status).toBe(500);
+			expect(csvResponse.headers.get("Content-Type")).toBe("text/plain");
+			expect(csvResponse.headers.get("Cache-Control")).toBe("no-store");
+			expect(await csvResponse.text()).toContain("Error fetching search");
+
+			(globalThis.fetch as any).mockResolvedValueOnce({
+				ok: false,
+				status: 429,
+			});
+			const jsonResponse = await worker.fetch(
+				new Request("http://localhost/api/search?q=FAILQ2&format=json"),
+				env,
+				ctx,
+			);
+
+			expect(jsonResponse.status).toBe(500);
+			expect(jsonResponse.headers.get("Content-Type")).toBe("application/json");
+			expect(await jsonResponse.json()).toEqual({
+				error: "Error fetching search: Yahoo Finance API error: 429",
+			});
+		});
+
+		it("should only respond to GET requests", async () => {
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=POSTQ", {
+					method: "POST",
+				}),
+				env,
+				ctx,
+			);
+
+			expect(response.status).toBe(404);
+			expect(await response.text()).toBe("Not Found");
+		});
+	});
+
+	describe("CORS", () => {
+		let ctx: ExecutionContext;
+
+		const corsEnv = {
+			ALLOWED_ORIGINS: "https://app.example.com",
+		};
+
+		beforeEach(() => {
+			vi.stubGlobal("fetch", vi.fn());
+			ctx = createExecutionContext();
+		});
+
+		afterEach(async () => {
+			await waitOnExecutionContext(ctx);
+			vi.unstubAllGlobals();
+		});
+
+		it("should echo an allowed origin and merge Vary with Accept", async () => {
+			(globalThis.fetch as any).mockResolvedValueOnce(searchResponse([]));
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=CORSQ", {
+					headers: { Origin: "https://app.example.com" },
+				}),
+				corsEnv,
+				ctx,
+			);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			expect(response.headers.get("Vary")).toBe("Accept, Origin");
+		});
+
+		it("should answer an OPTIONS preflight", async () => {
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=OPTIONSQ", {
+					method: "OPTIONS",
+					headers: { Origin: "https://app.example.com" },
+				}),
+				corsEnv,
+				ctx,
+			);
+
+			expect(response.status).toBe(204);
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+				"https://app.example.com",
+			);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		});
+	});
+});
+
 describe("Integration Tests", () => {
 	// Mocked unit tests use throwaway symbols (e.g. MOCK.MI), leaving real
 	// symbols like VWCE.MI free for these live tests. That matters because the
@@ -1368,6 +1818,23 @@ describe("Integration Tests", () => {
 			);
 			// No comma-splitting: just confirm the row leads with the symbol.
 			expect((await response.text()).startsWith(`${liveSymbol},`)).toBe(true);
+		});
+
+		it("should search real symbols", { timeout: 10000 }, async () => {
+			const ctx = createExecutionContext();
+
+			const response = await worker.fetch(
+				new Request("http://localhost/api/search?q=vwce&format=json"),
+				env,
+				ctx,
+			);
+
+			expect(response.status).toBe(200);
+			const body = JSON.parse(await response.text());
+			const symbols = body.results.map(
+				(result: { symbol: string }) => result.symbol,
+			);
+			expect(symbols).toContain(liveSymbol);
 		});
 	});
 });
