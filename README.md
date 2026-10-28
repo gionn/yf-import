@@ -284,10 +284,9 @@ curl "http://localhost:8787/api/search?q=vwce&format=json"
 ```
 
 Results keep Yahoo's ranking. Only Yahoo Finance symbols come back, so ISIN and
-CUSIP lookups are left out, and each symbol appears once. Missing `q`, a blank
-query or one longer than 64 characters is a `400`; an upstream failure is a
-`500`. Errors follow the requested format, so CSV mode gets plain text and JSON
-mode gets `{"error": "..."}`. Casing and repeated spaces do not matter.
+CUSIP lookups are left out, and each symbol appears once. A missing, blank or
+over-64-character `q` is a `400`; other failures are `500`s in the requested
+format. Casing and repeated spaces do not matter.
 
 Cross-listed funds come back once per listing, so the caller usually wants to
 sort or filter by `market`/`exchange`. A result carries no currency or price,
