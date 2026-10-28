@@ -61,7 +61,7 @@ Cloudflare Worker behind the `yf-import` service name. The route handler and sha
 
 ## Testing
 
-- Uses `@cloudflare/vitest-pool-workers` for Cloudflare Workers runtime compatibility
+- Uses `@cloudflare/vitest-plugin` for Cloudflare Workers runtime compatibility
 - Yahoo Finance API calls are mocked via `vi.stubGlobal("fetch", vi.fn())` in unit tests
 - Live integration tests hit the Yahoo Finance API (tagged `{ timeout: 10000 }`) — use `it.skip` when offline
 - Tests create per-case `ExecutionContext` via `createExecutionContext()` and call `waitOnExecutionContext()` in afterEach
