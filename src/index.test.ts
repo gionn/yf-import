@@ -1339,7 +1339,7 @@ describe("Search API", () => {
 				searchResponse([vwceQuote]),
 			);
 
-			const request = new Request("http://localhost/api/search?q=vwce");
+			const request = new Request("http://localhost/api/search?q=CSVQ");
 			const response = await worker.fetch(request, env, ctx);
 
 			expect(response.status).toBe(200);
@@ -1357,7 +1357,7 @@ describe("Search API", () => {
 			);
 
 			const request = new Request(
-				"http://localhost/api/search?q=vwce&format=json",
+				"http://localhost/api/search?q=MAPPEDQ&format=json",
 			);
 			const response = await worker.fetch(request, env, ctx);
 
@@ -1365,7 +1365,7 @@ describe("Search API", () => {
 			expect(response.headers.get("Content-Type")).toBe("application/json");
 			expect(response.headers.get("Vary")).toBe("Accept, Origin");
 			expect(await response.json()).toEqual({
-				query: "vwce",
+				query: "mappedq",
 				results: [
 					{
 						symbol: "VWCE.MI",
