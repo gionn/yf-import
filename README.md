@@ -263,8 +263,7 @@ takes a `q` query string and returns no news, lists or fuzzy matches. The
 response is CSV with a header row and one row per result, matching
 `/api/details`, with JSON available on request.
 
-Yahoo truncates the quotes array at 7 per query, so the route always asks for
-10 and returns what comes back.
+A search returns at most 7 results.
 
 | Column | Description |
 | ------ | ----------- |
@@ -284,12 +283,11 @@ curl "http://localhost:8787/api/search?q=vwce&format=json"
 # Returns: {"query":"vwce","results":[{"symbol":"VWCE.DE","ticker":"VWCE","market":".DE","description":"Vanguard FTSE All-World UCITS ETF USD Accumulation","quoteType":"ETF","exchange":"GER","exchangeDisplay":"XETRA"}]}
 ```
 
-Results keep Yahoo's ranking. Non-Yahoo hits (ISIN/CUSIP lookups) are dropped,
-and one symbol appears once. Missing `q`, a blank query or one longer than 64
-characters is a `400`; an upstream failure is a `500`. Errors follow the
-requested format, so CSV mode gets plain text and JSON mode gets
-`{"error": "..."}`. Casing and repeated spaces are ignored for caching, so
-`VWCE` and `vwce` share one entry, and CSV and JSON are cached separately.
+Results keep Yahoo's ranking. Only Yahoo Finance symbols come back, so ISIN and
+CUSIP lookups are left out, and each symbol appears once. Missing `q`, a blank
+query or one longer than 64 characters is a `400`; an upstream failure is a
+`500`. Errors follow the requested format, so CSV mode gets plain text and JSON
+mode gets `{"error": "..."}`. Casing and repeated spaces do not matter.
 
 Cross-listed funds come back once per listing, so the caller usually wants to
 sort or filter by `market`/`exchange`. A result carries no currency or price,
