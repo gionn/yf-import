@@ -207,6 +207,102 @@ function resolveFormat(request: Request, url: URL): "csv" | "json" {
 	return wantsJson ? "json" : "csv";
 }
 
+const YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search";
+// Yahoo caps the quotes array at 7 per response no matter what this asks for.
+const SEARCH_QUOTES_COUNT = 10;
+const SEARCH_MAX_QUERY_LENGTH = 64;
+
+/** A symbol suggestion as returned by the search route. */
+interface SearchResult {
+	symbol: string;
+	ticker: string;
+	market: string;
+	description: string;
+	quoteType: string | null;
+	exchange: string | null;
+	exchangeDisplay: string | null;
+}
+
+interface YahooSearchQuote {
+	symbol?: unknown;
+	longname?: unknown;
+	shortname?: unknown;
+	quoteType?: unknown;
+	exchange?: unknown;
+	exchDisp?: unknown;
+	isYahooFinance?: unknown;
+}
+
+function pickText(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const text = value.trim();
+	return text === "" ? null : text;
+}
+
+/**
+ * Maps a Yahoo search hit to the slim shape the app consumes, splitting the
+ * resolved symbols into the ticker and market suffix the catalog uses. Returns
+ * null for hits the app can't use: non-Yahoo entries (e.g. ISIN lookups) and
+ * rows without a symbol.
+ */
+function toSearchResult(quote: YahooSearchQuote): SearchResult | null {
+	const symbol = pickText(quote.symbol);
+	if (!symbol) return null;
+	if (quote.isYahooFinance === false) return null;
+
+	const suffixAt = symbol.lastIndexOf(".");
+	const hasSuffix = suffixAt > 0;
+
+	return {
+		symbol,
+		ticker: hasSuffix ? symbol.slice(0, suffixAt) : symbol,
+		market: hasSuffix ? symbol.slice(suffixAt) : "",
+		description: pickText(quote.longname) ?? pickText(quote.shortname) ?? "",
+		quoteType: pickText(quote.quoteType),
+		exchange: pickText(quote.exchange),
+		exchangeDisplay: pickText(quote.exchDisp),
+	};
+}
+
+/** Collapses runs of whitespace so the query and its cache key stay stable. */
+function collapseSpaces(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
+async function getYahooSearch(
+	query: string,
+	fetchTimeoutMs: number,
+): Promise<YahooSearchQuote[]> {
+	const params = new URLSearchParams({
+		q: query,
+		quotesCount: SEARCH_QUOTES_COUNT.toString(),
+		newsCount: "0",
+		listsCount: "0",
+		enableFuzzyQuery: "false",
+	});
+	const response = await fetch(`${YAHOO_SEARCH_URL}?${params}`, {
+		headers: {
+			"User-Agent": randomUserAgent(),
+		},
+		signal: AbortSignal.timeout(fetchTimeoutMs),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Yahoo Finance API error: ${response.status}`);
+	}
+
+	const data = (await response.json()) as { quotes?: unknown };
+	return Array.isArray(data?.quotes) ? (data.quotes as YahooSearchQuote[]) : [];
+}
+
+function searchError(message: string, status: number): Response {
+	return noStoreResponse(
+		JSON.stringify({ error: message }),
+		status,
+		"application/json",
+	);
+}
+
 async function tryRewriteExchangeSymbol(
 	symbol: string,
 	url: URL,
@@ -384,6 +480,68 @@ export default {
 						500,
 						contentType,
 					),
+			);
+		}
+
+		if (
+			url.pathname === "/api/search" &&
+			(request.method === "GET" || request.method === "OPTIONS")
+		) {
+			const { allowedOrigin, preflight } = resolveCors(request, env);
+			if (preflight) return preflight;
+
+			const rawQuery = collapseSpaces(url.searchParams.get("q") ?? "");
+			const query = rawQuery.toLowerCase();
+			const fetchTimeoutMs = parseInt(env.FETCH_TIMEOUT_MS || "5000", 10);
+			const cacheTTL = parseInt(env.CACHE_TTL || "300", 10);
+
+			// The normalized query is the cache key, so `VWCE` and `vwce` share
+			// one upstream call and one entry.
+			const cacheKey = new Request(
+				`${url.origin}/api/search?q=${encodeURIComponent(query)}`,
+				{ method: "GET" },
+			);
+			const cache = caches.default;
+
+			return corsGuarded(
+				async () => {
+					if (!query) {
+						return searchError("Missing q parameter", 400);
+					}
+					if (rawQuery.length > SEARCH_MAX_QUERY_LENGTH) {
+						return searchError(
+							`Query too long (max ${SEARCH_MAX_QUERY_LENGTH} characters)`,
+							400,
+						);
+					}
+
+					const cached = await cache.match(cacheKey);
+					if (cached) return cached;
+
+					const quotes = await getYahooSearch(rawQuery, fetchTimeoutMs);
+					const seen = new Set<string>();
+					const results: SearchResult[] = [];
+					for (const quote of quotes) {
+						const result = toSearchResult(quote);
+						if (!result || seen.has(result.symbol)) continue;
+						seen.add(result.symbol);
+						results.push(result);
+					}
+
+					const response = cacheableResponse(
+						JSON.stringify({ query, results }),
+						"application/json",
+						cacheTTL,
+					);
+
+					// Cache the plain response (CORS is added per request).
+					ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+					return response;
+				},
+				allowedOrigin,
+				"search",
+				(message) => searchError(message, 500),
 			);
 		}
 
