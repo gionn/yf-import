@@ -260,12 +260,8 @@ curl "http://localhost:8787/api/search?q=vwce"
 
 `/api/search` is the same lookup Yahoo Finance runs in its own search bar. It
 takes a `q` query string and returns no news, lists or fuzzy matches. The
-response is CSV with a header row and one row per result, so `IMPORTDATA()`
-parses it into a table:
-
-```text
-=IMPORTDATA("https://yf-import.gionn.net/api/search?q=vwce")
-```
+response is CSV with a header row and one row per result, matching
+`/api/details`, with JSON available on request.
 
 Yahoo truncates the quotes array at 7 per query, so the route always asks for
 10 and returns what comes back.
@@ -296,8 +292,9 @@ requested format, so CSV mode gets plain text and JSON mode gets
 `VWCE` and `vwce` share one entry, and CSV and JSON are cached separately.
 
 Cross-listed funds come back once per listing, so the caller usually wants to
-sort or filter by `market`/`exchange`. A result carries no currency or price;
-fetch `/api/details/{symbol}` for those.
+sort or filter by `market`/`exchange`. A result carries no currency or price,
+so this is a lookup, not a data source: import the chosen symbol from
+`/api/details/{symbol}`.
 
 ## Project Structure
 
